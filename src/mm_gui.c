@@ -51,6 +51,7 @@ typedef struct _stat64 stat_t;
 # define S_ISREG_(m)    (((m) & _S_IFMT) == _S_IFREG)
 # define do_stat(p, s)  _stat64((p), (s))
 # define do_mkdir(p)    _mkdir(p)
+# define do_rmdir(p)    _rmdir(p)
 # define do_chdir(p)    _chdir(p)
 # define do_getcwd(b, n) _getcwd((b), (int)(n))
 #else
@@ -71,6 +72,7 @@ typedef struct stat stat_t;
 # define S_ISREG_(m)    S_ISREG(m)
 # define do_stat(p, s)  stat((p), (s))
 # define do_mkdir(p)    mkdir((p), 0777)
+# define do_rmdir(p)    rmdir(p)
 # define do_chdir(p)    chdir(p)
 # define do_getcwd(b, n) getcwd((b), (n))
 extern char **environ;
@@ -89,6 +91,7 @@ extern char **environ;
 #define STOP_GRACE_MS       5000
 #define MAX_LIST_ENTRIES    5000
 #define DB_FILE             "mm_manager.db"
+#define CONFIGS_DIR         "configurations"    /* saved phone configurations, one folder each */
 
 /* Python packages that the table generators import. */
 static const char *python_packages[] = { "pandas", "requests", "xmltodict" };
@@ -1510,6 +1513,168 @@ static void api_db(request_t *req) {
     respond_json(req, 200, &b);
 }
 
+/* A terminal ID, as mm_manager names a terminal's folder: its 10-digit phone number. */
+static int terminal_id_ok(const char *s) {
+    if (strlen(s) != 10) {
+        return 0;
+    }
+    for (const char *p = s; *p; p++) {
+        if (*p < '0' || *p > '9') {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* Delete the files directly in a folder (not its subfolders). */
+static void remove_files_in(const char *path) {
+#ifdef _WIN32
+    char             pattern[PATH_LEN];
+    WIN32_FIND_DATAA fd;
+    HANDLE           h;
+
+    join_path(pattern, sizeof(pattern), path, "*");
+    h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    do {
+        char child[PATH_LEN];
+
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            join_path(child, sizeof(child), path, fd.cFileName);
+            (void)remove(child);
+        }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+#else
+    DIR           *d = opendir(path);
+    struct dirent *e;
+
+    if (d == NULL) {
+        return;
+    }
+    while ((e = readdir(d)) != NULL) {
+        char child[PATH_LEN];
+
+        join_path(child, sizeof(child), path, e->d_name);
+        if (is_file(child)) {
+            (void)remove(child);
+        }
+    }
+    closedir(d);
+#endif /* _WIN32 */
+}
+
+/*
+ * POST /api/rmdir?path=P: delete a terminal's folder (.../<terminal ID>) or a
+ * saved configuration (configurations/<name>), and the files in it.  A folder
+ * with folders inside is refused (after its files are gone).
+ */
+static void api_rmdir(request_t *req) {
+    char        path[PATH_LEN];
+    const char *last;
+
+    query_param(req, "path", path, sizeof(path));
+    if (!safe_path(path, 0) || !is_dir(path)) {
+        respond_error(req, 404, "no such folder");
+        return;
+    }
+    last = strrchr(path, '/');
+    last = last ? last + 1 : path;
+    if (!terminal_id_ok(last) &&
+        !(strncmp(path, CONFIGS_DIR "/", sizeof(CONFIGS_DIR)) == 0 && strchr(path + sizeof(CONFIGS_DIR), '/') == NULL)) {
+        respond_error(req, 400, "only a phone's folder or a saved configuration can be deleted");
+        return;
+    }
+    remove_files_in(path);
+    if (do_rmdir(path) != 0) {
+        respond_error(req, 500, strerror(errno));
+        return;
+    }
+    respond_ok(req);
+}
+
+/*
+ * POST /api/phone/rename?dir=D&from=A&to=B: a terminal's ID (its phone number)
+ * was changed on the terminal itself.  Rename its folder D/A to D/B, and move its
+ * records in mm_manager.db to the new ID.
+ */
+static void api_phone_rename(request_t *req) {
+    char          dir[PATH_LEN], from[16], to[16], src[PATH_LEN], dst[PATH_LEN];
+    sqlite3      *db = NULL;
+    sqlite3_stmt *st = NULL;
+    sbuf_t        b = { 0 };
+    long long     moved = 0;
+
+    query_param(req, "dir", dir, sizeof(dir));
+    query_param(req, "from", from, sizeof(from));
+    query_param(req, "to", to, sizeof(to));
+    if (!safe_path(dir, 0) || !terminal_id_ok(from) || !terminal_id_ok(to)) {
+        respond_error(req, 400, "a terminal ID is 10 digits");
+        return;
+    }
+    join_path(src, sizeof(src), dir, from);
+    join_path(dst, sizeof(dst), dir, to);
+    if (is_dir(dst) || is_file(dst)) {
+        respond_error(req, 409, "there is already a phone with that ID");
+        return;
+    }
+    if (is_dir(src) && rename(src, dst) != 0) {
+        respond_error(req, 500, strerror(errno));
+        return;
+    }
+
+    if (is_file(DB_FILE) && sqlite3_open_v2(DB_FILE, &db, SQLITE_OPEN_READWRITE, NULL) == SQLITE_OK) {
+        char   names[64][80];
+        int    n = 0;
+
+        sqlite3_busy_timeout(db, 5000);
+        if (sqlite3_prepare_v2(db, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+                               -1, &st, NULL) == SQLITE_OK) {
+            while (sqlite3_step(st) == SQLITE_ROW && n < 64) {
+                const char *name = (const char *)sqlite3_column_text(st, 0);
+
+                if (name != NULL && table_name_ok(name)) {
+                    snprintf(names[n++], sizeof(names[0]), "%s", name);
+                }
+            }
+        }
+        sqlite3_finalize(st);
+        for (int i = 0; i < n; i++) {
+            char sql[256];
+            int  has_id = 0;
+
+            snprintf(sql, sizeof(sql), "PRAGMA table_info(\"%s\")", names[i]);
+            if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK) {
+                while (sqlite3_step(st) == SQLITE_ROW) {
+                    const char *col = (const char *)sqlite3_column_text(st, 1);
+
+                    if (col != NULL && strcmp(col, "TERMINAL_ID") == 0) {
+                        has_id = 1;
+                    }
+                }
+            }
+            sqlite3_finalize(st);
+            if (!has_id) {
+                continue;
+            }
+            snprintf(sql, sizeof(sql), "UPDATE OR IGNORE \"%s\" SET TERMINAL_ID = ?1 WHERE TERMINAL_ID = ?2", names[i]);
+            if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK) {
+                sqlite3_bind_text(st, 1, to, -1, SQLITE_STATIC);
+                sqlite3_bind_text(st, 2, from, -1, SQLITE_STATIC);
+                if (sqlite3_step(st) == SQLITE_DONE) {
+                    moved += sqlite3_changes(db);
+                }
+            }
+            sqlite3_finalize(st);
+        }
+        sqlite3_close(db);
+    }
+    sb_printf(&b, "{\"ok\":true,\"records\":%lld}", moved);
+    respond_json(req, 200, &b);
+}
+
 static void handle(request_t *req) {
     int is_get  = strcmp(req->method, "GET") == 0 || strcmp(req->method, "HEAD") == 0;
     int is_post = strcmp(req->method, "POST") == 0;
@@ -1552,6 +1717,10 @@ static void handle(request_t *req) {
         api_output(req);
     } else if (strcmp(req->path, "/api/db") == 0 && is_get) {
         api_db(req);
+    } else if (strcmp(req->path, "/api/rmdir") == 0 && is_post) {
+        api_rmdir(req);
+    } else if (strcmp(req->path, "/api/phone/rename") == 0 && is_post) {
+        api_phone_rename(req);
     } else if (strcmp(req->path, "/api/quit") == 0 && is_post) {
         respond_ok(req);
         g_running = 0;

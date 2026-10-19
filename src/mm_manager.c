@@ -37,6 +37,34 @@
 
 #define JAN12020 1577865600
 
+/*
+ * Each terminal's folder, <term_table_dir>/<terminal_id>/, holds its own tables and:
+ *   phone.cfg       settings for this terminal (written by hand or by mm_gui):
+ *                     name=<label>, callin_interval=<minutes>, callin_retry=<minutes>,
+ *                     cdr_threshold=<1-50>
+ *   phone_status    what mm_manager last saw: terminal_type, last_call, last_update
+ *   update_pending  if present, send this terminal every table the next time it calls in.
+ *                   mm_manager creates it when a download fails, and removes it after
+ *                   a complete one.
+ *   table_update.log  the time of each complete download (as upstream mm_manager).
+ */
+#define PHONE_CONFIG_FILE       "phone.cfg"
+#define PHONE_STATUS_FILE       "phone_status"
+#define UPDATE_PENDING_FILE     "update_pending"
+
+#define DEFAULT_CALLIN_INTERVAL (12 * 60)   /* Minutes: call in twice a day. */
+#define DEFAULT_CALLIN_RETRY    (15)        /* Minutes before the terminal retries a failed call-in. */
+#define DEFAULT_CDR_THRESHOLD   (30)
+#define CALLIN_INTERVAL_MIN     (5)
+#define CALLIN_INTERVAL_MAX     (99 * 1440 + 23 * 60 + 59)  /* DD:HH:MM */
+#define DEFAULT_TABLE_RETRIES   (2)
+
+typedef struct phone_config {
+    uint32_t callin_interval;   /* Minutes */
+    uint32_t callin_retry;      /* Minutes */
+    uint8_t  cdr_threshold;
+} phone_config_t;
+
 /* Function Prototypes */
 time_t mm_time(int test_mode, time_t* rawtime);
 
@@ -46,7 +74,7 @@ static int load_mm_table(mm_context_t* context, char* terminal_id, uint8_t table
 static void generate_install_parameters(mm_context_t* context, uint8_t** buffer, size_t* len);
 static void generate_term_access_parameters(mm_context_t* context, char* terminal_id, uint8_t** buffer, size_t* len);
 static void generate_term_access_parameters_mtr1(mm_context_t* context, char* terminal_id, uint8_t** buffer, size_t* len);
-static void generate_call_in_parameters(mm_context_t* context, uint8_t** buffer, size_t* len);
+static void generate_call_in_parameters(mm_context_t* context, char* terminal_id, uint8_t** buffer, size_t* len);
 static void generate_call_stat_parameters(mm_context_t* context, uint8_t** buffer, size_t* len);
 static void generate_comm_stat_parameters(mm_context_t* context, uint8_t** buffer, size_t* len);
 static void generate_user_if_parameters(mm_context_t* context, uint8_t** buffer, size_t* len);
@@ -54,7 +82,15 @@ static void generate_dlog_mt_end_data(mm_context_t* context, uint8_t** buffer, s
 static int process_mm_table(mm_context_t* context, mm_table_t* table);
 static int create_terminal_specific_directory(char* table_dir, char* terminal_id);
 static int update_terminal_download_time(mm_context_t* context, char* terminal_id);
-static int check_mm_table_is_newer(mm_context_t* context, char* terminal_id, uint8_t table_id);
+static int check_mm_table_is_newer(mm_context_t* context, char* terminal_id, uint8_t table_id, int quiet);
+static uint8_t* table_list_for_terminal(mm_context_t* context);
+static int terminal_id_ok(const char* terminal_id);
+static void phone_file(mm_context_t* context, const char* terminal_id, const char* name, char* path, size_t len);
+static void load_phone_config(mm_context_t* context, const char* terminal_id, phone_config_t* cfg);
+static int phone_status_get(mm_context_t* context, const char* terminal_id, const char* key, char* value, size_t len);
+static void phone_status_set(mm_context_t* context, const char* terminal_id, const char* key, const char* value);
+static void set_update_pending(mm_context_t* context, const char* terminal_id, int pending);
+static int terminal_update_waiting(mm_context_t* context, char* terminal_id, int* full);
 static void mm_display_help(const char* name, FILE* stream);
 #ifndef _WIN32
 void signal_handler(int sig);
@@ -247,7 +283,7 @@ uint8_t table_list_mtr17_intl[] = {
     0                         /* End of table list */
 };
 
-const char cmdline_options[] = "a:b:cDd:e:f:hi:k:l:mn:p:qrS:st:uvw";
+const char cmdline_options[] = "a:b:cDd:e:f:hI:i:k:l:mn:p:qR:rS:st:Uuvw";
 
 /* Default communication parameters, may be overridden during compile. */
 #ifndef DEFAULT_BAUD_RATE
@@ -362,6 +398,8 @@ int main(int argc, char *argv[]) {
     mm_context->key_card_number[4] = 0x88;
 
     mm_context->complete_download = FALSE;
+    mm_context->table_retries = DEFAULT_TABLE_RETRIES;
+    mm_context->callin_interval = DEFAULT_CALLIN_INTERVAL;
     mm_context->connection.proto.monitor_carrier = TRUE;
 
     mm_context->test_mode = TRUE;
@@ -444,6 +482,19 @@ int main(int argc, char *argv[]) {
                 mm_shutdown(mm_context);
                 return(0);
                 break;
+            case 'I':
+            {
+                long minutes = strtol(optarg, NULL, 10);
+
+                if ((minutes < CALLIN_INTERVAL_MIN) || (minutes > CALLIN_INTERVAL_MAX)) {
+                    fprintf(stderr, "Option -I takes the minutes between call-ins, %d to %d.\n",
+                            CALLIN_INTERVAL_MIN, CALLIN_INTERVAL_MAX);
+                    mm_shutdown(mm_context);
+                    return(-EINVAL);
+                }
+                mm_context->callin_interval = (uint32_t)minutes;
+                break;
+            }
             case 'i':
                 snprintf(mm_context->connection.modem_init_string, sizeof(mm_context->connection.modem_init_string), "%s", optarg);
                 break;
@@ -503,6 +554,18 @@ int main(int argc, char *argv[]) {
                 break;
             case 'q':
                 break;
+            case 'R':
+            {
+                long tries = strtol(optarg, NULL, 10);
+
+                if ((tries < 0) || (tries > 10)) {
+                    fprintf(stderr, "Option -R takes the number of times to resend a table, 0 to 10.\n");
+                    mm_shutdown(mm_context);
+                    return(-EINVAL);
+                }
+                mm_context->table_retries = (uint8_t)tries;
+                break;
+            }
             case 'r':
                 printf("NOTE: Rating test mode enabled.\n");
                 mm_context->rating_test_mode = 1;
@@ -523,6 +586,10 @@ int main(int argc, char *argv[]) {
                 break;
             case 't':
                 snprintf(mm_context->term_table_dir,    sizeof(mm_context->term_table_dir),    "%s", optarg);
+                break;
+            case 'U':
+                printf("NOTE: Waiting table updates are sent when a terminal calls in.\n");
+                mm_context->push_updates = 1;
                 break;
             case 'u':
                 printf("Sending UDP packets to 127.0.0.1:%d\n", MM_UDP_PORT);
@@ -570,6 +637,10 @@ int main(int argc, char *argv[]) {
 
     printf("Default Table directory: %s\n",                         mm_context->default_table_dir);
     printf("Terminal-specific Table directory: %s/<terminal_id>\n", mm_context->term_table_dir);
+    printf("Resend unacknowledged tables up to %d time%s.\n", mm_context->table_retries,
+           mm_context->table_retries == 1 ? "" : "s");
+    printf("Terminals call in every %u minutes, unless their %s says otherwise.\n",
+           mm_context->callin_interval, PHONE_CONFIG_FILE);
 
     printf("Using access code: %s\n",
            phone_num_to_string(access_code_str, sizeof(access_code_str), mm_context->access_code,
@@ -653,6 +724,10 @@ int main(int argc, char *argv[]) {
 
         retries = 0;
         if (mm_connection_wait(&mm_context->connection)) {
+            /* A new call may be from a different terminal: forget the last one's type. */
+            mm_context->terminal_type = MTR_UNKNOWN;
+            mm_context->connection.proto.terminal_id[0] = '\0';
+
             while (proto_connected(&mm_context->connection.proto) && (manager_running) && (retries < 3)) {
                 retries++;
                 status = process_mm_table(mm_context, &mm_table);
@@ -671,6 +746,13 @@ int main(int argc, char *argv[]) {
             printf("\n\n%04d-%02d-%02d %2d:%02d:%02d: Terminal %s: Disconnected.\n\n",
                 ptm.tm_year + 1900, ptm.tm_mon + 1, ptm.tm_mday, ptm.tm_hour, ptm.tm_min, ptm.tm_sec,
                 mm_context->connection.proto.terminal_id);
+
+            if (terminal_id_ok(mm_context->connection.proto.terminal_id)) {
+                char last_call[32];
+
+                strftime(last_call, sizeof(last_call), "%Y-%m-%d %H:%M:%S", &ptm);
+                phone_status_set(mm_context, mm_context->connection.proto.terminal_id, "last_call", last_call);
+            }
         }
     }
 
@@ -717,6 +799,15 @@ static int process_mm_table(mm_context_t* context, mm_table_t* table) {
 
     phone_num_to_string(terminal_id, sizeof(terminal_id), pkt->payload, PKT_TABLE_ID_OFFSET);
     ppayload = pkt->payload + PKT_TABLE_ID_OFFSET;
+
+    /* Until the terminal reports its software version, use the type it reported last time. */
+    if ((context->terminal_type == MTR_UNKNOWN) && terminal_id_ok(terminal_id)) {
+        char type_str[8];
+
+        if (phone_status_get(context, terminal_id, "terminal_type", type_str, sizeof(type_str)) == 0) {
+            context->terminal_type = (uint8_t)atoi(type_str);
+        }
+    }
 
     while (ppayload < pkt->payload + pkt->payload_len) {
         table->table_id = *ppayload;
@@ -897,6 +988,12 @@ static int process_mm_table(mm_context_t* context, mm_table_t* table) {
                 ppayload += sizeof(dlog_mt_sw_version_t);
 
                 mm_acct_save_TSWVERS(context->database, &context->telco, terminal_id, dlog_mt_sw_version, &context->terminal_type);
+                if ((context->terminal_type != MTR_UNKNOWN) && terminal_id_ok(terminal_id)) {
+                    char type_str[8];
+
+                    snprintf(type_str, sizeof(type_str), "%d", context->terminal_type);
+                    phone_status_set(context, terminal_id, "terminal_type", type_str);
+                }
                 break;
             }
             case DLOG_MT_CASH_BOX_STATUS: {
@@ -929,11 +1026,21 @@ static int process_mm_table(mm_context_t* context, mm_table_t* table) {
                 break;
             }
             case DLOG_MT_CALL_IN: {
+                int full = 0;
+
                 printf("\tDLOG_MT_CALL_IN: Terminal: %s\n", terminal_id);
                 ppayload += sizeof(dlog_mt_call_in_t);
+
+                /* With -U, a scheduled call-in is also the terminal's chance to pick up new tables. */
+                if (context->push_updates && terminal_update_waiting(context, terminal_id, &full)) {
+                    printf("\t\tTerminal %s has a table update waiting (%s), sending it now.\n",
+                           terminal_id, full ? "every table" : "changed tables");
+                    context->terminal_upd_reason = full ? 0 : TTBLREQ_CRAFT_FORCE_DL;
+                    *pack_payload++ = DLOG_MT_TABLE_UPD;
+                    table_download_pending = 1;
+                    break;
+                }
                 *pack_payload++                 = DLOG_MT_TRANS_DATA;
-//                context->terminal_upd_reason |= TTBLREQ_CRAFT_FORCE_DL;
-//                table_download_pending = 1;
                 context->trans_data_in_progress = 1;
                 break;
             }
@@ -1223,14 +1330,9 @@ static int process_mm_table(mm_context_t* context, mm_table_t* table) {
     return 0;
 }
 
-static int mm_download_tables(mm_context_t *context, char *terminal_id) {
-    int      table_index;
-    int      status = 0;
-    size_t   table_len;
-    uint8_t *table_buffer;
+/* The tables to download, for the terminal's MTR version. */
+static uint8_t *table_list_for_terminal(mm_context_t *context) {
     uint8_t *table_list = table_list_mtr_2x;
-    uint8_t  table_id;
-    uint8_t  term_model = term_type_to_model(context->terminal_type);
 
     switch (term_type_to_mtr(context->terminal_type)) {
     case MTR_2_X:
@@ -1256,6 +1358,31 @@ static int mm_download_tables(mm_context_t *context, char *terminal_id) {
         fprintf(stderr, "%s: Error: Unknown terminal type %d, defaulting to MTR 1.7\n", __func__, context->terminal_type);
         table_list = table_list_mtr17;
         break;
+    }
+    return table_list;
+}
+
+static int mm_download_tables(mm_context_t *context, char *terminal_id) {
+    int      table_index;
+    int      status = 0;
+    int      failed = 0;
+    size_t   table_len;
+    uint8_t *table_buffer;
+    uint8_t *table_list = table_list_for_terminal(context);
+    uint8_t  table_id;
+    uint8_t  term_model = term_type_to_model(context->terminal_type);
+    char     result[64];
+    char     pending_path[TABLE_PATH_MAX_LEN];
+    struct stat pending_stat;
+    int      send_all = context->complete_download;
+
+    /* After a failed download, send every table, even for a craft force download. */
+    if (terminal_id_ok(terminal_id)) {
+        phone_file(context, terminal_id, UPDATE_PENDING_FILE, pending_path, sizeof(pending_path));
+        if (stat(pending_path, &pending_stat) == 0) {
+            printf("Terminal %s has an update pending: sending every table.\n", terminal_id);
+            send_all = TRUE;
+        }
     }
 
     for (table_index = 0; (table_id = table_list[table_index]) > 0; table_index++) {
@@ -1310,7 +1437,7 @@ static int mm_download_tables(mm_context_t *context, char *terminal_id) {
                 generate_install_parameters(context, &table_buffer, &table_len);
                 break;
             case DLOG_MT_CALL_IN_PARMS:
-                generate_call_in_parameters(context, &table_buffer, &table_len);
+                generate_call_in_parameters(context, terminal_id, &table_buffer, &table_len);
                 break;
             case DLOG_MT_NCC_TERM_PARAMS:
                 if (term_type_to_mtr(context->terminal_type) <= MTR_1_13) {
@@ -1355,11 +1482,11 @@ static int mm_download_tables(mm_context_t *context, char *terminal_id) {
                  * unless the terminal lost its memory or the the "-c" option was
                  * selected.
                  */
-                if ((context->complete_download == FALSE) &&
+                if (!send_all &&
                     (context->terminal_upd_reason & TTBLREQ_CRAFT_FORCE_DL) &&
                     !(context->terminal_upd_reason & TTBLREQ_LOST_MEMORY) &&
                     !(context->terminal_upd_reason & TTBLREQ_PWR_LOST_ON_DL)) {
-                    if (check_mm_table_is_newer(context, terminal_id, table_id) != 0) {
+                    if (check_mm_table_is_newer(context, terminal_id, table_id, 0) != 0) {
                         table_buffer = NULL;
                         continue;
                     }
@@ -1385,13 +1512,28 @@ static int mm_download_tables(mm_context_t *context, char *terminal_id) {
             ((dlog_mt_fconfig_opts_t*)table_buffer)->term_type = term_model & 0x0F;
         }
 
-        status = send_mm_table(&context->connection.proto, table_buffer, table_len);
+        /* Send the table, and resend it (-R) if the terminal doesn't acknowledge it. */
+        for (int attempt = 0; ; attempt++) {
+            status = send_mm_table(&context->connection.proto, table_buffer, table_len);
 
-        if (status == PKT_SUCCESS) {
-            /* For all tables except END_OF_DATA, expect a table ACK. */
-            if (table_list[table_index] != DLOG_MT_END_DATA) {
-                status = wait_for_table_ack(&context->connection.proto, table_buffer[0]);
+            if (status == PKT_SUCCESS) {
+                /* For all tables except END_OF_DATA, expect a table ACK. */
+                if (table_list[table_index] != DLOG_MT_END_DATA) {
+                    status = wait_for_table_ack(&context->connection.proto, table_buffer[0]);
+                }
             }
+
+            if ((status == PKT_SUCCESS) || (attempt >= context->table_retries) ||
+                !manager_running || !proto_connected(&context->connection.proto)) {
+                break;
+            }
+            printf("\tTable %d (0x%02x) %s was not acknowledged, sending it again (retry %d of %d).\n",
+                   table_id, table_id, table_to_string(table_id), attempt + 1, context->table_retries);
+        }
+
+        if (status != PKT_SUCCESS) {
+            printf("\tTable %d (0x%02x) %s was not acknowledged.\n", table_id, table_id, table_to_string(table_id));
+            failed++;
         }
 
         free(table_buffer);
@@ -1399,11 +1541,34 @@ static int mm_download_tables(mm_context_t *context, char *terminal_id) {
 
     }
 
-    if (proto_connected(&context->connection.proto)) {
+    if (proto_connected(&context->connection.proto) && manager_running && (failed == 0)) {
         /* Update table download time. */
         update_terminal_download_time(context, terminal_id);
+        set_update_pending(context, terminal_id, 0);
+        snprintf(result, sizeof(result), "complete");
     } else {
-        printf("%s: Download failed.\n", __func__);
+        /* Send everything again the next time this terminal calls in (with -U), or asks for tables. */
+        if (!proto_connected(&context->connection.proto) || !manager_running) {
+            printf("%s: Download failed: disconnected.\n", __func__);
+            snprintf(result, sizeof(result), "failed: disconnected");
+        } else {
+            printf("%s: Download incomplete: %d table%s not acknowledged.\n", __func__, failed, failed == 1 ? " was" : "s were");
+            snprintf(result, sizeof(result), "failed: %d table%s not acknowledged", failed, failed == 1 ? "" : "s");
+        }
+        set_update_pending(context, terminal_id, 1);
+        if (status == PKT_SUCCESS) status = -1;
+    }
+
+    if (terminal_id_ok(terminal_id)) {
+        time_t    rawtime;
+        struct tm ptm = { 0 };
+        char      line[100];
+
+        mm_time(context->test_mode, &rawtime);
+        localtime_r(&rawtime, &ptm);
+        strftime(line, sizeof(line), "%Y-%m-%d %H:%M:%S ", &ptm);
+        snprintf(line + strlen(line), sizeof(line) - strlen(line), "%s", result);
+        phone_status_set(context, terminal_id, "last_update", line);
     }
 
     return status;
@@ -1440,7 +1605,7 @@ static int update_terminal_download_time(mm_context_t *context, char *terminal_i
     return 0;
 }
 
-static int check_mm_table_is_newer(mm_context_t *context, char *terminal_id, uint8_t table_id) {
+static int check_mm_table_is_newer(mm_context_t *context, char *terminal_id, uint8_t table_id, int quiet) {
     char  fname[TABLE_PATH_MAX_LEN];
     char  download_time_fname[TABLE_PATH_MAX_LEN + 1];
     struct stat table_mtime_attr;
@@ -1476,11 +1641,13 @@ static int check_mm_table_is_newer(mm_context_t *context, char *terminal_id, uin
     strftime(table_mtime_date, 99, "%Y-%m-%d %H:%M:%S", &ptm);
 
     if (table_mtime_attr.st_mtime < last_download_time_attr.st_mtime) {
-        printf("Skipping download of table %d: last downloaded: %s, mtime: %s.\n",
-            table_id,
-            last_download_date,
-            table_mtime_date);
-            return -1;
+        if (!quiet) {
+            printf("Skipping download of table %d: last downloaded: %s, mtime: %s.\n",
+                table_id,
+                last_download_date,
+                table_mtime_date);
+        }
+        return -1;
     }
     return 0;
 }
@@ -1695,12 +1862,13 @@ static void generate_term_access_parameters_mtr1(mm_context_t *context, char *te
     *buffer = pbuffer;
 }
 
-static void generate_call_in_parameters(mm_context_t *context, uint8_t **buffer, size_t *len) {
+static void generate_call_in_parameters(mm_context_t *context, char *terminal_id, uint8_t **buffer, size_t *len) {
     dlog_mt_call_in_params_t *pcall_in_params;
     uint8_t  *pbuffer;
     time_t    rawtime;
     struct tm ptm = { 0 };
-    uint8_t   call_in_hour;
+    phone_config_t cfg;
+    uint32_t  start_min;
 
     *len    = sizeof(dlog_mt_call_in_params_t);
     pbuffer = (uint8_t*)calloc(1, *len);
@@ -1713,7 +1881,10 @@ static void generate_call_in_parameters(mm_context_t *context, uint8_t **buffer,
 
     pcall_in_params = (dlog_mt_call_in_params_t *)pbuffer;
 
-    printf("\nGenerating Call-In table:\n");
+    load_phone_config(context, terminal_id, &cfg);
+
+    printf("\nGenerating Call-In table: call in every %u minutes, retry after %u minutes:\n",
+           cfg.callin_interval, cfg.callin_retry);
 
     pcall_in_params->id = DLOG_MT_CALL_IN_PARMS;
 
@@ -1722,28 +1893,28 @@ static void generate_call_in_parameters(mm_context_t *context, uint8_t **buffer,
 
     /* Interestingly, the terminal will call in starting at the call-in time, and continue
      * calling in at intervals specified, up until midnight.  After that, the terminal will
-     * not call in until the call-in time the following day.  Since we want to call in twice
-     * a day, set the call-in hour to a time in the AM, so the subsequent call 12 hours later
-     * will be in the PM of the same day.
+     * not call in until the call-in time the following day.  So for intervals shorter than
+     * a day, start as early in the day as possible while keeping to the current time of day:
+     * with 12 hours, a call-in at 3 PM becomes one at 3 AM, so the next is at 3 PM the same day.
      */
-    call_in_hour = (ptm.tm_hour & 0xff);
+    start_min = (uint32_t)(ptm.tm_hour * 60 + ptm.tm_min);
 
-    if (call_in_hour >= 12) { /* If after noon, set back to the AM. */
-        call_in_hour -= 12;
+    if (cfg.callin_interval < 1440) {
+        start_min %= cfg.callin_interval;
     }
 
     pcall_in_params->call_in_start_date[0]      = (ptm.tm_year & 0xff);       /* Call-in start YY */
     pcall_in_params->call_in_start_date[1]      = ((ptm.tm_mon + 1) & 0xff);  /* Call in start MM */
     pcall_in_params->call_in_start_date[2]      = (ptm.tm_mday & 0xff);       /* Call in start DD */
-    pcall_in_params->call_in_start_time[0]      = call_in_hour;               /* Call-in start HH */
-    pcall_in_params->call_in_start_time[1]      = (ptm.tm_min & 0xff);        /* Call-in start MM */
+    pcall_in_params->call_in_start_time[0]      = (uint8_t)(start_min / 60);  /* Call-in start HH */
+    pcall_in_params->call_in_start_time[1]      = (uint8_t)(start_min % 60);  /* Call-in start MM */
     pcall_in_params->call_in_start_time[2]      = (ptm.tm_sec & 0xff);        /* Call-in start SS */
-    pcall_in_params->call_in_interval[0]        = 0;                          /* Call-in inteval DD */
-    pcall_in_params->call_in_interval[1]        = 12;                         /* Call-in inteval HH */
-    pcall_in_params->call_in_interval[2]        = 0;                          /* Call-in inteval MM */
-    pcall_in_params->call_back_retry_time[0]    = 15;                         /* Call-back retry time MM */
+    pcall_in_params->call_in_interval[0]        = (uint8_t)(cfg.callin_interval / 1440);       /* Call-in inteval DD */
+    pcall_in_params->call_in_interval[1]        = (uint8_t)((cfg.callin_interval / 60) % 24);  /* Call-in inteval HH */
+    pcall_in_params->call_in_interval[2]        = (uint8_t)(cfg.callin_interval % 60);         /* Call-in inteval MM */
+    pcall_in_params->call_back_retry_time[0]    = (uint8_t)cfg.callin_retry;  /* Call-back retry time MM */
     pcall_in_params->call_back_retry_time[1]    = 0;                          /* Call-back retry time SS */
-    pcall_in_params->cdr_threshold              = 30;                         /* Indicates the number of CDRs that the terminal will store before automatically calling in to the Millennium Manager to upload them. (Range: 1-50) */
+    pcall_in_params->cdr_threshold              = cfg.cdr_threshold;          /* Indicates the number of CDRs that the terminal will store before automatically calling in to the Millennium Manager to upload them. (Range: 1-50) */
     pcall_in_params->call_in_expiration_date[0] = ((ptm.tm_year + 1) & 0xff); /* Expiration timestamp YY */
     pcall_in_params->call_in_expiration_date[1] = ((ptm.tm_mon + 1) & 0xff);  /* Expiration timestamp MM */
     pcall_in_params->call_in_expiration_date[2] = (ptm.tm_mday & 0xff);       /* Expiration timestamp DD */
@@ -1909,6 +2080,212 @@ static void generate_dlog_mt_end_data(mm_context_t *context, uint8_t **buffer, s
     *buffer[0] = DLOG_MT_END_DATA;
 }
 
+/* A terminal ID from the terminal is its phone number: only digits, so safe as a folder name. */
+static int terminal_id_ok(const char *terminal_id) {
+    size_t n = strlen(terminal_id);
+
+    if ((n == 0) || (n > 10)) return 0;
+    for (size_t i = 0; i < n; i++) {
+        if ((terminal_id[i] < '0') || (terminal_id[i] > '9')) return 0;
+    }
+    return 1;
+}
+
+static void phone_file(mm_context_t *context, const char *terminal_id, const char *name, char *path, size_t len) {
+    snprintf(path, len, "%s/%s/%s", context->term_table_dir, terminal_id, name);
+}
+
+/* Strip leading and trailing white space in place. */
+static char *trim(char *s) {
+    char *end;
+
+    while ((*s == ' ') || (*s == '\t')) s++;
+    end = s + strlen(s);
+    while ((end > s) && ((end[-1] == ' ') || (end[-1] == '\t') || (end[-1] == '\r') || (end[-1] == '\n'))) {
+        *--end = '\0';
+    }
+    return s;
+}
+
+/* Settings for one terminal, from its phone.cfg, falling back to the command line. */
+static void load_phone_config(mm_context_t *context, const char *terminal_id, phone_config_t *cfg) {
+    char  path[TABLE_PATH_MAX_LEN];
+    char  line[256];
+    FILE *stream;
+
+    cfg->callin_interval = context->callin_interval;
+    cfg->callin_retry    = DEFAULT_CALLIN_RETRY;
+    cfg->cdr_threshold   = DEFAULT_CDR_THRESHOLD;
+
+    if (!terminal_id_ok(terminal_id)) return;
+
+    phone_file(context, terminal_id, PHONE_CONFIG_FILE, path, sizeof(path));
+    if ((stream = fopen(path, "r")) == NULL) return;
+
+    while (fgets(line, sizeof(line), stream) != NULL) {
+        char *key = trim(line);
+        char *value = strchr(key, '=');
+        long  v;
+
+        if ((key[0] == '#') || (value == NULL)) continue;
+        *value++ = '\0';
+        key = trim(key);
+        value = trim(value);
+        v = strtol(value, NULL, 10);
+
+        if (strcmp(key, "callin_interval") == 0) {
+            if ((v >= CALLIN_INTERVAL_MIN) && (v <= CALLIN_INTERVAL_MAX)) {
+                cfg->callin_interval = (uint32_t)v;
+            } else {
+                fprintf(stderr, "%s: callin_interval must be %d to %d minutes, ignoring %s.\n", path,
+                        CALLIN_INTERVAL_MIN, CALLIN_INTERVAL_MAX, value);
+            }
+        } else if (strcmp(key, "callin_retry") == 0) {
+            if ((v >= 1) && (v <= 59)) {
+                cfg->callin_retry = (uint32_t)v;
+            } else {
+                fprintf(stderr, "%s: callin_retry must be 1 to 59 minutes, ignoring %s.\n", path, value);
+            }
+        } else if (strcmp(key, "cdr_threshold") == 0) {
+            if ((v >= 1) && (v <= 50)) {
+                cfg->cdr_threshold = (uint8_t)v;
+            } else {
+                fprintf(stderr, "%s: cdr_threshold must be 1 to 50, ignoring %s.\n", path, value);
+            }
+        }
+    }
+    fclose(stream);
+}
+
+/* Read one value from a terminal's phone_status.  Returns 0 if it was there. */
+static int phone_status_get(mm_context_t *context, const char *terminal_id, const char *key, char *value, size_t len) {
+    char   path[TABLE_PATH_MAX_LEN];
+    char   line[256];
+    FILE  *stream;
+    size_t key_len = strlen(key);
+    int    found = -1;
+
+    phone_file(context, terminal_id, PHONE_STATUS_FILE, path, sizeof(path));
+    if ((stream = fopen(path, "r")) == NULL) return -1;
+
+    while (fgets(line, sizeof(line), stream) != NULL) {
+        if ((strncmp(line, key, key_len) == 0) && (line[key_len] == '=')) {
+            snprintf(value, len, "%s", trim(line + key_len + 1));
+            found = 0;
+        }
+    }
+    fclose(stream);
+    return found;
+}
+
+/* Set one value in a terminal's phone_status, keeping the others. */
+static void phone_status_set(mm_context_t *context, const char *terminal_id, const char *key, const char *value) {
+    char   path[TABLE_PATH_MAX_LEN];
+    char   line[256];
+    char   contents[4096] = "# Written by mm_manager: what it last saw of this terminal.\n";
+    size_t key_len = strlen(key);
+    FILE  *stream;
+
+    if (!terminal_id_ok(terminal_id)) return;
+
+    phone_file(context, terminal_id, PHONE_STATUS_FILE, path, sizeof(path));
+    if ((stream = fopen(path, "r")) != NULL) {
+        contents[0] = '\0';
+        while (fgets(line, sizeof(line), stream) != NULL) {
+            if ((strncmp(line, key, key_len) == 0) && (line[key_len] == '=')) continue;
+            if (strlen(contents) + strlen(line) < sizeof(contents) - 128) {
+                strcat(contents, line);
+            }
+        }
+        fclose(stream);
+    }
+    snprintf(contents + strlen(contents), sizeof(contents) - strlen(contents), "%s=%s\n", key, value);
+
+    create_terminal_specific_directory(context->term_table_dir, (char *)terminal_id);
+    if ((stream = fopen(path, "w")) == NULL) {
+        fprintf(stderr, "%s: Error: Could not write '%s'.\n", __func__, path);
+        return;
+    }
+    fputs(contents, stream);
+    fclose(stream);
+}
+
+static void set_update_pending(mm_context_t *context, const char *terminal_id, int pending) {
+    char  path[TABLE_PATH_MAX_LEN];
+    FILE *stream;
+
+    if (!terminal_id_ok(terminal_id)) return;
+
+    phone_file(context, terminal_id, UPDATE_PENDING_FILE, path, sizeof(path));
+    if (!pending) {
+        (void)remove(path);
+        return;
+    }
+    create_terminal_specific_directory(context->term_table_dir, (char *)terminal_id);
+    if ((stream = fopen(path, "w")) != NULL) {
+        fputs("Send every table to this terminal the next time it calls in.\n", stream);
+        fclose(stream);
+    }
+}
+
+/*
+ * Does this terminal have tables waiting for it?  Yes if its update_pending file
+ * is there (*full is set: send every table), or if one of its tables changed since
+ * its last complete download (send the changed ones).
+ */
+static int terminal_update_waiting(mm_context_t *context, char *terminal_id, int *full) {
+    char        path[TABLE_PATH_MAX_LEN];
+    struct stat st;
+    uint8_t    *table_list;
+
+    *full = 0;
+    if (!terminal_id_ok(terminal_id)) return 0;
+
+    if (term_type_to_mtr(context->terminal_type) == MTR_UNKNOWN) {
+        printf("\t\tTerminal %s: type not known yet, so no tables are sent until it asks for them.\n", terminal_id);
+        return 0;
+    }
+
+    phone_file(context, terminal_id, UPDATE_PENDING_FILE, path, sizeof(path));
+    if (stat(path, &st) == 0) {
+        *full = 1;
+        return 1;
+    }
+
+    /* Never downloaded by this manager: leave it alone until it asks, or update_pending is set. */
+    phone_file(context, terminal_id, "table_update.log", path, sizeof(path));
+    if (stat(path, &st) != 0) return 0;
+
+    table_list = table_list_for_terminal(context);
+    for (int i = 0; table_list[i] != 0; i++) {
+        switch (table_list[i]) {
+            case DLOG_MT_NCC_TERM_PARAMS:   /* Generated on every download, not read from a file. */
+            case DLOG_MT_INSTALL_PARAMS:
+            case DLOG_MT_CALL_IN_PARMS:
+            case DLOG_MT_CALL_STAT_PARMS:
+            case DLOG_MT_COMM_STAT_PARMS:
+            case DLOG_MT_CASH_BOX_STATUS:
+            case DLOG_MT_END_DATA:
+                continue;
+            default:
+                break;
+        }
+        if (check_mm_table_is_newer(context, terminal_id, table_list[i], 1) == 0) {
+            return 1;
+        }
+    }
+
+    /* A changed phone.cfg changes the generated call-in table. */
+    phone_file(context, terminal_id, PHONE_CONFIG_FILE, path, sizeof(path));
+    if (stat(path, &st) == 0) {
+        struct stat last;
+
+        phone_file(context, terminal_id, "table_update.log", path, sizeof(path));
+        if ((stat(path, &last) == 0) && (st.st_mtime >= last.st_mtime)) return 1;
+    }
+    return 0;
+}
+
 static int create_terminal_specific_directory(char *table_dir, char *terminal_id) {
     char dirname[268];
     int  status = 0;
@@ -1944,9 +2321,9 @@ time_t mm_time(int test_mode, time_t *rawtime) {
 }
 
 static void mm_display_help(const char *name, FILE *stream) {
-    /* "a:b:cDd:e:f:hi:k:l:mn:p:qrS:st:uvw" */
+    /* "a:b:cDd:e:f:hI:i:k:l:mn:p:qR:rS:st:Uuvw" */
     fprintf(stream,
-        "usage: %s [-vhmqD] [-f <filename>] [-i \"modem init string\"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>]\n",
+        "usage: %s [-vhmqDU] [-f <filename>] [-i \"modem init string\"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>] [-R <retries>] [-I <minutes>]\n",
         name);
     fprintf(stream,
             "\t-a <access_code> - Craft 7-digit access code (default: CRASERV)\n" \
@@ -1957,6 +2334,8 @@ static void mm_display_help(const char *name, FILE *stream) {
             "\t-e <error_inject_type> - Inject error on SIGBRK.\n" \
             "\t-f <filename> modem device or file.  With -m, -f auto (or leaving out -f) uses the first modem found.\n" \
             "\t-h this help.\n" \
+            "\t-I <minutes> - Minutes between a terminal's scheduled call-ins (default: 720).\n" \
+            "\t     A terminal's <term_table_dir>/<terminal_id>/phone.cfg can set its own callin_interval.\n" \
             "\t-i \"modem init string\" - Modem initialization string.\n" \
             "\t-k <key_code> - Desk Terminal 10-digit key card code (default: 4012888888)\n" \
             "\t-l <logfile> - log bytes transmitted to and received from the terminal.  Useful for debugging.\n" \
@@ -1964,6 +2343,7 @@ static void mm_display_help(const char *name, FILE *stream) {
             "\t-n <Primary NCC Number> [-n <Secondary NCC Number>] - specify primary and optionally secondary NCC number.\n" \
             "\t-p <pcapfile> - Save packets in a .pcap file.\n" \
             "\t-q - Don't display sign-on banner.\n" \
+            "\t-R <retries> - Resend a table the terminal doesn't acknowledge up to <retries> times (default: 2).\n" \
             "\t-r - Rating test mode: Amount charged determined by last 4 digits of dialed number.\n" \
             "\t-S <sip_config> - Use the SIP virtual modem instead of a serial modem.  <sip_config> is:\n" \
             "\t     user[:password]@registrar[:port][;option=value...] to register with a SIP server, or\n" \
@@ -1972,6 +2352,7 @@ static void mm_display_help(const char *name, FILE *stream) {
             "\t     answer_tone=2225|2100.  The password may also be given in MM_SIP_PASSWORD.\n" \
             "\t-s - Download only minimum required tables to terminal.\n" \
             "\t-t <term_table_dir> - terminal-specific table directory.\n" \
+            "\t-U - When a terminal calls in and has new tables waiting (or a failed update to retry), send them.\n" \
             "\t-u <port> - Send packets as UDP to <port>.\n" \
             "\t-v verbose (multiple v's increase verbosity.\n" \
             "\t-w - don't monitor the modem for carrier loss.\n");

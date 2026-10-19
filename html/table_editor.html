@@ -680,6 +680,7 @@ dl.glossary dd { margin: 0; }
 
     <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab" role="tab" id="tab-tables" aria-controls="view-tables" aria-selected="true" data-view="tables">tables</button>
+        <button class="tab" role="tab" id="tab-phones" aria-controls="view-phones" aria-selected="false" data-view="phones" hidden>phones</button>
         <button class="tab" role="tab" id="tab-manager" aria-controls="view-manager" aria-selected="false" data-view="manager">manager settings</button>
         <button class="tab" role="tab" id="tab-roms" aria-controls="view-roms" aria-selected="false" data-view="roms">rom versions</button>
         <button class="tab" role="tab" id="tab-records" aria-controls="view-records" aria-selected="false" data-view="records" hidden>records</button>
@@ -713,6 +714,7 @@ dl.glossary dd { margin: 0; }
 
         <section id="view-manager" role="tabpanel" aria-labelledby="tab-manager" hidden></section>
         <section id="view-roms" role="tabpanel" aria-labelledby="tab-roms" hidden></section>
+        <section id="view-phones" role="tabpanel" aria-labelledby="tab-phones" hidden></section>
         <section id="view-records" role="tabpanel" aria-labelledby="tab-records" hidden></section>
         <section id="view-tools" role="tabpanel" aria-labelledby="tab-tools" hidden></section>
         <section id="view-help" role="tabpanel" aria-labelledby="tab-help" hidden></section>
@@ -1685,7 +1687,7 @@ const GENERATED = [
     [0x1f, 'INSTSV', 'Installation / servicing', 'Access code (-a) and key card (-k). Packet delay 100 ms, 40 retries before out of service, 150 s coin box lock timeout are fixed.'],
     [0x20, 'COMMST', 'Communication statistics', 'Fixed defaults: perf stats every day, threshold 1.'],
     [0x22, 'CALLST', 'Call statistics', 'Fixed defaults: daily call stats, CDR threshold 40.'],
-    [0x23, 'TERM call-in', 'Call-in parameters', 'Calls in twice a day, starting at the time of the current call; 30 CDRs trigger a call.'],
+    [0x23, 'TERM call-in', 'Call-in parameters', 'Calls in every 12 hours (-I, or the phone\'s own schedule on the phones tab); 30 CDRs trigger a call.'],
     [0x26, 'TCASHST', 'Cash box status', 'Read back from the manager database.'],
 ];
 
@@ -2597,6 +2599,7 @@ const MGR_DEFAULTS = {
     sipPort: '', rtpPort: '', expires: '', authUser: '', domain: '', localIp: '', codec: '', answerTone: '',
     device: 'auto', baud: '', init: '', noCarrier: false, replay: '',
     ncc1: '', ncc2: '', access: '', keycard: '', defaultDir: '', termDir: '', complete: false, minimal: false,
+    retries: '', callin: '', push: false,
     log: '', pcap: '', udp: false, verbose: 1, quiet: false, rating: false, shell: 'posix',
 };
 const mgr = { ...MGR_DEFAULTS, ...safeStorage(s => JSON.parse(s.getItem('mmTableEditor.manager') || '{}'), {}) };
@@ -2653,6 +2656,15 @@ function buildCommand({ run = false } = {}) {
     if (mgr.complete) args.push('-c');
     if (mgr.minimal) args.push('-s');
     if (mgr.complete && mgr.minimal) warn.push('-c and -s pull in opposite directions; pick one.');
+    if (mgr.retries !== '') {
+        if (!/^\d+$/.test(mgr.retries) || +mgr.retries > 10) warn.push('Resend unacknowledged tables: 0 to 10 times.');
+        args.push('-R', mgr.retries);
+    }
+    if (mgr.callin !== '') {
+        if (!/^\d+$/.test(mgr.callin) || +mgr.callin < 5 || +mgr.callin > 143999) warn.push('Call-in interval: 5 to 143999 minutes.');
+        args.push('-I', mgr.callin);
+    }
+    if (mgr.push) args.push('-U');
     if (mgr.rating) args.push('-r');
     if (mgr.log) args.push('-l', mgr.log);
     if (mgr.pcap) args.push('-p', mgr.pcap);
@@ -2759,6 +2771,14 @@ function renderManager() {
             h('div', { class: 'chips', style: 'margin-top:12px' },
                 check('complete', 'always send every table (-c)'), check('minimal', 'send only the required tables (-s)'),
                 check('rating', 'rating test mode (-r)'))),
+        h('div', { class: 'card' }, h('h3', null, 'Updates and calling in'),
+            h('p', { class: 'section-note' }, 'The manager never calls a payphone. Payphones call in on a schedule, and a phone\'s own schedule (phones tab) wins over the default here.'),
+            h('div', { class: 'fields' },
+                field('callin', 'Payphones call in every (minutes)', { inputmode: 'numeric', placeholder: 'default 720 (12 hours)', hint: '5 to 143999. Sent to each phone with its tables.' }),
+                field('retries', 'Resend a table that isn\'t acknowledged', { inputmode: 'numeric', placeholder: 'default 2 times', hint: '0 to 10 times, during the same call.' })),
+            h('div', { class: 'chips', style: 'margin-top:12px' },
+                check('push', 'send updates when a payphone calls in (-U)')),
+            h('p', { class: 'meta', style: 'margin-top:8px' }, 'With -U, a payphone calling in on schedule also gets any tables changed since its last update, or every table if its last update failed. Experimental: not yet tried on a real payphone.')),
         h('div', { class: 'card' }, h('h3', null, 'Logs and debugging'),
             h('div', { class: 'fields' },
                 field('log', 'Transcript log', { mono: true, placeholder: 'e.g. session.dlog' }),
@@ -2940,6 +2960,355 @@ async function findModems(after) {
         toast(`found ${modems.length === 1 ? 'a modem' : modems.length + ' modems'} — using ${modems[0].path} at ${modems[0].baud} bps`);
     } else toast('no modem answered — the scan output is on the tools tab', 'error');
     if (after) after();
+}
+
+/* =====================================================================
+ * Phones (mm_gui only): one folder per payphone, named by its terminal ID
+ * ===================================================================== */
+
+/*
+ * mm_manager keeps each payphone's tables in tables/<terminal ID>/, where the
+ * terminal ID is the 10-digit number keyed into the payphone when it is set up.
+ * Next to them: phone.cfg (settings, written here), phone_status (written by
+ * mm_manager) and update_pending (send every table at the next call-in).
+ * Saved configurations live in configurations/<name>/: tables and a phone.cfg.
+ */
+const CONFIGS_DIR = 'configurations';
+const PHONE_SETTINGS = ['callin_interval', 'callin_retry', 'cdr_threshold'];
+const CALLIN_CHOICES = [['', 'manager default'], ['15', 'every 15 minutes'], ['30', 'every 30 minutes'], ['60', 'every hour'],
+    ['120', 'every 2 hours'], ['240', 'every 4 hours'], ['360', 'every 6 hours'], ['480', 'every 8 hours'], ['720', 'every 12 hours'],
+    ['1440', 'once a day'], ['2880', 'every 2 days'], ['10080', 'once a week']];
+const phones = { list: null, configs: null, current: null, error: '' };
+const isTableName = n => /^mm_table_[0-9a-f]{2}\.bin$/i.test(n);
+const baseName = p => p.split('/').pop();
+const fmtTerm = id => /^\d{10}$/.test(id) ? `(${id.slice(0, 3)}) ${id.slice(3, 6)}-${id.slice(6)}` : id;
+const localStamp = t => { const d = new Date(t * 1000), z = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`; };
+const configNameOk = s => /^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/.test(s);
+
+function parseSettings(text) {
+    const o = {};
+    for (const line of (text || '').split(/\r?\n/)) {
+        const m = line.match(/^\s*([A-Za-z_]+)\s*=\s*(.*?)\s*$/);
+        if (m) o[m[1]] = m[2];
+    }
+    return o;
+}
+
+function settingsText(o, header) {
+    return header + Object.entries(o).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}=${String(v).replace(/[\r\n]/g, ' ')}`).join('\n') + '\n';
+}
+
+async function readServerText(path) {
+    try { return new TextDecoder().decode(await serverRead(path)); } catch (e) { return null; }
+}
+
+const writePhoneCfg = (dir, cfg) => serverWrite(`${dir}/phone.cfg`,
+    settingsText(cfg, '# Settings for this payphone, read by mm_manager (see the phones tab of the control panel).\n'));
+
+async function loadPhones() {
+    const base = tablesBase();
+    const depth = base.split('/').length;
+    try {
+        const entries = (await api(`/api/list?dir=${enc(base)}&depth=1`)).entries;
+        const ids = entries.filter(e => e.dir && e.path.split('/').length === depth + 1 && /^\d{10}$/.test(baseName(e.path)))
+            .map(e => baseName(e.path)).sort();
+        phones.list = await Promise.all(ids.map(async id => {
+            const dir = `${base}/${id}`;
+            const files = entries.filter(e => !e.dir && e.path.startsWith(dir + '/'));
+            const find = n => files.find(e => e.path === `${dir}/${n}`);
+            return {
+                id, dir,
+                tables: files.map(e => baseName(e.path)).filter(isTableName).sort(),
+                cfg: find('phone.cfg') ? parseSettings(await readServerText(`${dir}/phone.cfg`)) : {},
+                status: find('phone_status') ? parseSettings(await readServerText(`${dir}/phone_status`)) : {},
+                pending: !!find('update_pending'),
+                lastDownload: find('table_update.log') ? find('table_update.log').mtime : 0,
+            };
+        }));
+        const cl = (await api(`/api/list?dir=${CONFIGS_DIR}&depth=1`)).entries;
+        phones.configs = await Promise.all(cl.filter(e => e.dir && e.path.split('/').length === 2).map(async e => ({
+            name: baseName(e.path), dir: e.path,
+            tables: cl.filter(x => !x.dir && x.path.startsWith(e.path + '/') && isTableName(baseName(x.path))).map(x => baseName(x.path)).sort(),
+            cfg: cl.some(x => x.path === `${e.path}/phone.cfg`) ? parseSettings(await readServerText(`${e.path}/phone.cfg`)) : {},
+        })));
+        phones.configs.sort((a, b) => a.name.localeCompare(b.name));
+        phones.error = '';
+    } catch (e) {
+        phones.list = phones.list || []; phones.configs = phones.configs || []; phones.error = e.message;
+    }
+    if (!phones.list.some(p => p.id === phones.current)) phones.current = phones.list.length ? phones.list[0].id : null;
+    if (state.view === 'phones') renderPhones();
+}
+
+/* After changing files under tables/, show them on the tables tab too (unless edits there are unsaved). */
+async function refreshAfterPhoneChange() {
+    await loadPhones();
+    if (state.files.some(f => !f.practice && isDirty(f))) toast('reload tables on the tables tab to see the change there', 'info');
+    else await openServerTables(true);
+}
+
+/* Write a configuration's tables and settings into a phone's folder, and have mm_manager send them all. */
+async function applyConfig(config, phone, replace) {
+    if (replace) {
+        for (const t of phone.tables.filter(t => !config.tables.includes(t))) {
+            await api(`/api/delete?path=${enc(`${phone.dir}/${t}`)}`, { method: 'POST' });
+        }
+    }
+    for (const t of config.tables) await serverWrite(`${phone.dir}/${t}`, await serverRead(`${config.dir}/${t}`));
+    const cfg = { ...phone.cfg };
+    for (const k of PHONE_SETTINGS) { if (replace || config.cfg[k] != null) cfg[k] = config.cfg[k] ?? ''; }
+    cfg.configuration = config.name;
+    await writePhoneCfg(phone.dir, cfg);
+    await serverWrite(`${phone.dir}/update_pending`, 'Send every table to this terminal the next time it calls in.\n');
+}
+
+function addPhoneDialog() {
+    const idIn = h('input', { class: 'in', id: uid(), inputmode: 'numeric', maxlength: '10', placeholder: '4085551234' });
+    const nameIn = h('input', { class: 'in', id: uid(), placeholder: 'e.g. lobby' });
+    const sel = selectEl([['', 'no, start from the defaults'], ...(phones.configs || []).map(c => [c.name, c.name])], '', { id: uid() });
+    openDialog('add a phone', h('div', { class: 'fields' },
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: idIn.id }, 'Terminal ID'), idIn,
+            h('div', { class: 'fhint' }, 'The 10-digit number keyed into the payphone when it was set up (its own phone number). It tells mm_manager which phone is calling.')),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Name (optional)'), nameIn),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: sel.id }, 'Start from a saved configuration?'), sel)),
+    'add it', async () => {
+        const id = idIn.value.trim();
+        if (!/^\d{10}$/.test(id)) return 'The terminal ID needs exactly 10 digits.';
+        if (phones.list.some(p => p.id === id)) return `There is already a phone ${fmtTerm(id)}.`;
+        const phone = { id, dir: `${tablesBase()}/${id}`, tables: [], cfg: nameIn.value.trim() ? { name: nameIn.value.trim() } : {} };
+        try {
+            await writePhoneCfg(phone.dir, phone.cfg);
+            const config = phones.configs.find(c => c.name === sel.value);
+            if (config) await applyConfig(config, phone, true);
+        } catch (e) { return `Couldn't add it: ${e.message}`; }
+        phones.current = id;
+        toast(`added ${fmtTerm(id)}`);
+        refreshAfterPhoneChange();
+        return null;
+    });
+}
+
+function renamePhoneDialog(p) {
+    const idIn = h('input', { class: 'in', id: uid(), inputmode: 'numeric', maxlength: '10', value: p.id });
+    openDialog('change terminal ID', h('div', { class: 'fields' },
+        h('p', { class: 'meta' }, 'Do this when the terminal ID was changed on the payphone itself. Its folder, tables and settings move to the new ID, and so do its records in mm_manager.db.'),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: idIn.id }, 'New terminal ID'), idIn)),
+    'change it', async () => {
+        const id = idIn.value.trim();
+        if (!/^\d{10}$/.test(id)) return 'The terminal ID needs exactly 10 digits.';
+        if (id === p.id) return null;
+        if (phones.list.some(x => x.id === id)) return `There is already a phone ${fmtTerm(id)}. Remove it first.`;
+        let r;
+        try { r = await api(`/api/phone/rename?dir=${enc(tablesBase())}&from=${p.id}&to=${id}`, { method: 'POST' }); }
+        catch (e) { return `Couldn't change it: ${e.message}`; }
+        phones.current = id;
+        toast(`${fmtTerm(p.id)} is now ${fmtTerm(id)}${r.records ? ` (${r.records} records moved)` : ''}`);
+        refreshAfterPhoneChange();
+        return null;
+    });
+}
+
+function saveConfigDialog(p) {
+    const nameIn = h('input', { class: 'in', id: uid(), placeholder: 'e.g. lobby coin phone', value: p.cfg.configuration || '' });
+    openDialog('save as a configuration', h('div', { class: 'fields' },
+        h('p', { class: 'meta' }, `Saves ${p.tables.length ? `this phone's ${p.tables.length} table${p.tables.length === 1 ? '' : 's'}` : 'this phone\'s settings'} and call-in settings under a name, to apply to other phones. Tables it takes from default/ or a model folder aren't copied: every phone gets those anyway.`),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Configuration name'), nameIn,
+            h('div', { class: 'fhint' }, 'Letters, digits, spaces, - and _. An existing configuration with this name is replaced.'))),
+    'save it', async () => {
+        const name = nameIn.value.trim();
+        if (!configNameOk(name)) return 'Use up to 40 letters, digits, spaces, - or _, starting with a letter or digit.';
+        const dir = `${CONFIGS_DIR}/${name}`;
+        try {
+            if (phones.configs.some(c => c.name === name)) await api(`/api/rmdir?path=${enc(dir)}`, { method: 'POST' });
+            const cfg = {};
+            for (const k of PHONE_SETTINGS) if (p.cfg[k]) cfg[k] = p.cfg[k];
+            await serverWrite(`${dir}/phone.cfg`, settingsText(cfg, `# Saved configuration "${name}", from terminal ${p.id}.\n`));
+            for (const t of p.tables) await serverWrite(`${dir}/${t}`, await serverRead(`${p.dir}/${t}`));
+            const pc = { ...p.cfg, configuration: name };
+            await writePhoneCfg(p.dir, pc);
+        } catch (e) { return `Couldn't save it: ${e.message}`; }
+        toast(`saved configuration "${name}"`);
+        loadPhones();
+        return null;
+    });
+}
+
+function applyConfigDialog(config, preselect) {
+    if (!phones.list.length) { toast('add a phone first', 'info'); return; }
+    const boxes = phones.list.map(p => {
+        const cb = h('input', { type: 'checkbox', checked: p.id === preselect });
+        return { p, cb, el: h('label', { class: 'check' }, cb, `${fmtTerm(p.id)}${p.cfg.name ? ` · ${p.cfg.name}` : ''}`) };
+    });
+    const configSel = config ? null : selectEl(phones.configs.map(c => [c.name, c.name]), '', { id: uid() });
+    const replace = h('input', { type: 'checkbox', checked: true });
+    openDialog(config ? `apply "${config.name}"` : 'apply a configuration', h('div', { class: 'fields' },
+        configSel ? h('div', { class: 'field' }, h('label', { class: 'flabel', for: configSel.id }, 'Configuration'), configSel) : null,
+        h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'To these phones'), h('div', null, boxes.map(b => b.el))),
+        h('label', { class: 'check' }, replace, 'replace: remove the phones\' other tables and call-in settings'),
+        h('p', { class: 'meta' }, 'Each phone gets every table again the next time it asks for tables, or, with "send updates when a payphone calls in" on (manager settings), at its next call-in.')),
+    'apply it', async () => {
+        const c = config || phones.configs.find(x => x.name === configSel.value);
+        const chosen = boxes.filter(b => b.cb.checked).map(b => b.p);
+        if (!c) return 'Choose a configuration.';
+        if (!chosen.length) return 'Tick at least one phone.';
+        try { for (const p of chosen) await applyConfig(c, p, replace.checked); }
+        catch (e) { return `Couldn't apply it: ${e.message}`; }
+        toast(`applied "${c.name}" to ${chosen.length === 1 ? fmtTerm(chosen[0].id) : chosen.length + ' phones'}`);
+        refreshAfterPhoneChange();
+        return null;
+    });
+}
+
+async function removePhone(p) {
+    if (!confirm(`Remove ${fmtTerm(p.id)}${p.cfg.name ? ` (${p.cfg.name})` : ''}? Its folder, with its ${p.tables.length} table${p.tables.length === 1 ? '' : 's'} and settings, is deleted. Its records in mm_manager.db stay.`)) return;
+    try { await api(`/api/rmdir?path=${enc(p.dir)}`, { method: 'POST' }); }
+    catch (e) { toast(`hmm, couldn't remove it: ${e.message}`, 'error'); return; }
+    toast(`removed ${fmtTerm(p.id)}`);
+    refreshAfterPhoneChange();
+}
+
+async function removeConfig(c) {
+    if (!confirm(`Delete the saved configuration "${c.name}"? Phones it was applied to keep their tables.`)) return;
+    try { await api(`/api/rmdir?path=${enc(c.dir)}`, { method: 'POST' }); }
+    catch (e) { toast(`hmm, couldn't delete it: ${e.message}`, 'error'); return; }
+    toast(`deleted "${c.name}"`);
+    loadPhones();
+}
+
+function openPhoneTable(p, t) {
+    const f = state.files.find(x => x.path === `${p.id}/${t}`);
+    if (!f) { toast('that table isn\'t open on the tables tab — reload tables there', 'info'); return; }
+    state.current = f;
+    showView('tables');
+    renderAll();
+}
+
+function phoneCard(p) {
+    const st = p.status;
+    const type = /^\d+$/.test(st.terminal_type || '') && +st.terminal_type <= 60
+        ? `${TERM_MODELS[TERM_TYPE_MODEL[+st.terminal_type]] || 'unknown'} · ${mtrName(TERM_TYPE_MTR[+st.terminal_type])}` : 'not reported yet';
+    const draft = { ...p.cfg };
+    const nameIn = h('input', { class: 'in', id: uid(), value: p.cfg.name || '', placeholder: 'e.g. lobby' });
+    nameIn.addEventListener('input', () => { draft.name = nameIn.value.trim(); });
+    const callin = selectEl(CALLIN_CHOICES.some(([v]) => v === (p.cfg.callin_interval || '')) ? CALLIN_CHOICES
+        : [...CALLIN_CHOICES, [p.cfg.callin_interval, `every ${p.cfg.callin_interval} minutes`]], p.cfg.callin_interval || '', { id: uid() });
+    callin.addEventListener('change', () => { draft.callin_interval = callin.value; });
+    const num = (key, min, max, placeholder) => {
+        const inp = h('input', { class: 'in', id: uid(), inputmode: 'numeric', value: p.cfg[key] || '', placeholder });
+        inp.addEventListener('input', () => { draft[key] = inp.value.trim(); });
+        inp.dataset.range = `${min}-${max}`;
+        return inp;
+    };
+    const retry = num('callin_retry', 1, 59, 'default 15');
+    const cdr = num('cdr_threshold', 1, 50, 'default 30');
+    const save = async () => {
+        for (const [inp, label] of [[retry, 'Retry a failed call-in after'], [cdr, 'Call in after this many calls']]) {
+            const [min, max] = inp.dataset.range.split('-').map(Number);
+            const v = inp.value.trim();
+            if (v && (!/^\d+$/.test(v) || +v < min || +v > max)) { toast(`${label}: ${min} to ${max}`, 'error'); return; }
+        }
+        try { await writePhoneCfg(p.dir, draft); }
+        catch (e) { toast(`hmm, couldn't save: ${e.message}`, 'error'); return; }
+        toast('saved — the phone gets its new call-in schedule with its next tables');
+        loadPhones();
+    };
+    const togglePending = async () => {
+        try {
+            if (p.pending) await api(`/api/delete?path=${enc(`${p.dir}/update_pending`)}`, { method: 'POST' });
+            else await serverWrite(`${p.dir}/update_pending`, 'Send every table to this terminal the next time it calls in.\n');
+        } catch (e) { toast(`hmm, that didn't work: ${e.message}`, 'error'); return; }
+        loadPhones();
+    };
+    const row = (label, value) => h('div', { class: 'field' }, h('span', { class: 'flabel' }, label), h('div', null, value));
+    const lastUpdate = st.last_update || '';
+    return h('div', null,
+        h('div', { class: 'card' },
+            h('div', { class: 'section-title' }, h('h2', null, p.cfg.name || fmtTerm(p.id)),
+                h('span', { class: 'badge paper' }, p.id),
+                p.pending ? h('span', { class: 'badge pink' }, 'update waiting') : null,
+                p.cfg.configuration ? h('span', { class: 'badge paper' }, `config: ${p.cfg.configuration}`) : null),
+            h('div', { class: 'fields' },
+                h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Terminal ID'),
+                    h('div', { class: 'btns' }, h('strong', { class: 'mono' }, fmtTerm(p.id)),
+                        h('button', { class: 'btn small', type: 'button', onclick: () => renamePhoneDialog(p) }, 'change…')),
+                    h('div', { class: 'fhint' }, 'Set on the payphone during install. Change it here too if it changes there.')),
+                h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Name'), nameIn))),
+        h('div', { class: 'card' },
+            h('h3', null, 'Calling in'),
+            h('p', { class: 'section-note' }, 'The payphone calls the manager on this schedule to report calls and alarms. With "send updates when a payphone calls in" on (manager settings), it also picks up changed tables then.'),
+            h('div', { class: 'fields' },
+                h('div', { class: 'field' }, h('label', { class: 'flabel', for: callin.id }, 'Call in'), callin,
+                    h('div', { class: 'fhint' }, 'Manager default: -I, or every 12 hours.')),
+                h('div', { class: 'field' }, h('label', { class: 'flabel', for: retry.id }, 'Retry a failed call-in after (minutes)'), retry),
+                h('div', { class: 'field' }, h('label', { class: 'flabel', for: cdr.id }, 'Call in after this many calls'), cdr,
+                    h('div', { class: 'fhint' }, 'It also calls in early once it holds this many call records (1–50).'))),
+            h('div', { class: 'btns', style: 'margin-top:16px' }, h('button', { class: 'btn primary', type: 'button', onclick: save }, 'save settings'))),
+        h('div', { class: 'card' },
+            h('h3', null, 'Updates'),
+            h('div', { class: 'fields' },
+                row('Last call', st.last_call || 'never'),
+                row('Last update', lastUpdate ? h('span', { style: /failed/.test(lastUpdate) ? 'color:var(--pink-ink);font-weight:700' : '' }, lastUpdate) : 'never'),
+                row('Last complete update', p.lastDownload ? localStamp(p.lastDownload) : 'never'),
+                row('Model', type)),
+            p.pending ? h('p', { class: 'notice' }, 'Every table goes to this phone the next time it calls in (with "send updates when a payphone calls in" on) or asks for tables. mm_manager sets this itself when an update fails, so it is retried.') : null,
+            h('div', { class: 'btns', style: 'margin-top:16px' },
+                h('button', { class: 'btn', type: 'button', onclick: togglePending }, p.pending ? 'cancel the waiting update' : 'send every table at the next call'))),
+        h('div', { class: 'card' },
+            h('h3', null, 'Tables'),
+            h('p', { class: 'section-note' }, p.tables.length
+                ? 'Tables only this phone gets. For the rest, mm_manager uses its model folder, then default/.'
+                : 'None of its own yet: it gets its model folder\'s tables, then default/. Apply a configuration, or use "copy for a terminal" on the tables tab.'),
+            p.tables.length ? h('ul', { class: 'file-list' }, p.tables.map(t => {
+                const id = parseInt(t.slice(9, 11), 16);
+                const d = DEFS[id];
+                return h('li', null, h('button', { class: 'file-item', type: 'button', onclick: () => openPhoneTable(p, t) },
+                    h('span', { class: 'code' + (d ? '' : ' unknown') }, `${hexId(id)}${d ? ' ' + d.code : ''}`),
+                    h('span', { class: 'nm' }, d ? d.name : t),
+                    h('span', { class: 'desc' }, t)));
+            })) : null,
+            h('div', { class: 'btns', style: 'margin-top:16px' },
+                h('button', { class: 'btn', type: 'button', onclick: () => saveConfigDialog(p) }, 'save as a configuration…'),
+                h('button', { class: 'btn', type: 'button', disabled: !phones.configs.length, onclick: () => applyConfigDialog(null, p.id) }, 'apply a configuration…'))),
+        h('div', { class: 'card' },
+            h('div', { class: 'btns' }, h('button', { class: 'btn danger', type: 'button', onclick: () => removePhone(p) }, 'remove this phone'),
+                h('span', { class: 'meta' }, 'Deletes its folder. Its records stay in the database.'))));
+}
+
+function renderPhones() {
+    const host = $('#view-phones');
+    host.replaceChildren();
+    if (phones.list === null) { host.append(h('p', { class: 'meta' }, 'loading…')); loadPhones(); return; }
+    const nav = h('div', null,
+        h('div', { class: 'card' },
+            h('div', { class: 'overline' }, `phones · ${tablesBase()}/`),
+            tip('Each payphone is known by its terminal ID. Phones show up here by themselves after they first call in.'),
+            phones.error ? h('p', { class: 'notice' }, `hmm, couldn't read the folders: ${phones.error}`) : null,
+            !phones.list.length ? h('p', null, 'No phones yet.') : null,
+            h('ul', { class: 'file-list' }, phones.list.map(p => h('li', null,
+                h('button', { class: 'file-item', type: 'button', 'aria-current': p.id === phones.current ? 'true' : 'false',
+                    onclick: () => { phones.current = p.id; renderPhones(); } },
+                    h('span', { class: 'code' + (p.pending || /failed/.test(p.status.last_update || '') ? '' : ' unknown') },
+                        p.pending ? 'waiting' : /failed/.test(p.status.last_update || '') ? 'failed' : p.id.slice(6)),
+                    h('span', { class: 'nm' }, p.cfg.name || fmtTerm(p.id)),
+                    h('span', { class: 'desc' }, p.cfg.name ? fmtTerm(p.id) : (p.status.last_call ? `called ${p.status.last_call}` : 'hasn\'t called yet')))))),
+            h('div', { class: 'btns', style: 'margin-top:12px' },
+                h('button', { class: 'btn small primary', type: 'button', onclick: addPhoneDialog }, 'add a phone'),
+                h('button', { class: 'btn small', type: 'button', onclick: loadPhones }, 'refresh'))),
+        h('div', { class: 'card' },
+            h('div', { class: 'overline' }, `saved configurations · ${CONFIGS_DIR}/`),
+            !phones.configs.length ? h('p', { class: 'meta' }, 'None yet. Set up one phone, then "save as a configuration" to reuse it.') : null,
+            h('ul', { class: 'file-list' }, phones.configs.map(c => h('li', { style: 'padding:8px 0' },
+                h('div', null, h('strong', null, c.name), ' ',
+                    h('span', { class: 'meta' }, `${c.tables.length} table${c.tables.length === 1 ? '' : 's'}${c.cfg.callin_interval ? ` · calls in every ${c.cfg.callin_interval} min` : ''}`)),
+                h('div', { class: 'btns' },
+                    h('button', { class: 'btn small link', type: 'button', onclick: () => applyConfigDialog(c, phones.current) }, 'apply…'),
+                    h('button', { class: 'btn small link', type: 'button', onclick: () => removeConfig(c) }, 'delete')))))));
+    const p = phones.list.find(x => x.id === phones.current);
+    const main = p ? phoneCard(p) : h('div', { class: 'card' }, h('h2', null, 'One manager, many payphones'),
+        h('p', null, 'mm_manager tells payphones apart by their terminal ID, the 10-digit number keyed in when each one is set up. A phone appears here after it first calls in, or add it yourself to prepare its tables before it does.'),
+        h('div', { class: 'btns', style: 'margin-top:16px' }, h('button', { class: 'btn primary', type: 'button', onclick: addPhoneDialog }, 'add a phone')));
+    host.append(h('div', { class: 'workspace' }, h('aside', { class: 'side' }, nav), main));
 }
 
 /* =====================================================================
@@ -3567,6 +3936,8 @@ function renderHelp() {
                 h('ul', null,
                     h('li', null, h('strong', null, 'manager settings: '), 'choose SIP or a serial modem, then ', h('em', null, 'start mm_manager'),
                         '. Its output scrolls by underneath. It keeps running when you close the page; the button at the top of every tab shows its state and takes you back. To change a setting, stop it, change it, start it again.'),
+                    h('li', null, h('strong', null, 'phones: '), 'every payphone, by its terminal ID (the 10-digit number keyed in when it was set up; change it here when it changes on the phone). Name each one, set how often it calls in, see whether its last update went through, ',
+                        'and save one phone\'s tables as a named configuration to apply to others. A failed update is retried: the phone gets every table at its next call.'),
                     h('li', null, h('strong', null, 'records: '), 'what payphones reported when they called in: calls, alarms, cash box counts, software versions. Save rows as CSV, or download the database.'),
                     h('li', null, h('strong', null, 'rom versions: '), 'opens ', h('code', null, 'config/control_rom_versions.csv'), ' directly. mm_manager reads it when it starts, so restart it after a change.'),
                     h('li', null, h('strong', null, 'tools: '), 'the files in the working folder (download, upload, delete, turn a ', h('code', null, '.dlog'), ' into a ', h('code', null, '.pcap'),
@@ -3580,6 +3951,7 @@ function renderHelp() {
                 h('ul', null,
                     h('li', null, 'tables open and save straight into mm_manager\'s folder, in any browser'),
                     h('li', null, 'a start button for mm_manager, with its output live on the page'),
+                    h('li', null, 'phones: several payphones, each with its own tables and call-in schedule, and saved configurations to share between them'),
                     h('li', null, 'records: the calls, alarms and cash box counts payphones report'),
                     h('li', null, 'tools: a modem scan, log and capture files, and the table generators')),
             ]),
@@ -3899,7 +4271,7 @@ function renderAll() {
     renderEditor();
 }
 
-const VIEWS = server ? ['tables', 'manager', 'roms', 'records', 'tools', 'help'] : ['tables', 'manager', 'roms', 'help'];
+const VIEWS = server ? ['tables', 'phones', 'manager', 'roms', 'records', 'tools', 'help'] : ['tables', 'manager', 'roms', 'help'];
 
 function showView(view) {
     if (!VIEWS.includes(view)) view = 'tables';
@@ -3908,6 +4280,7 @@ function showView(view) {
     for (const v of VIEWS) $('#view-' + v).hidden = v !== view;
     if (view === 'manager') renderManager();
     if (view === 'roms') { if (server && !roms.rows.length && !roms.tried) { roms.tried = true; openRoms().then(renderRoms); } else renderRoms(); }
+    if (view === 'phones') { phones.list = null; renderPhones(); }
     if (view === 'records') { records.tables = null; renderRecords(); }
     if (view === 'tools') { tools.files = null; renderTools(); }
     if (view === 'help') renderHelp();
@@ -3981,6 +4354,7 @@ function init() {
 async function initServer() {
     document.title = 'mmumblephone control panel';
     $('.masthead .tagline').textContent = 'control panel · run the manager and tune what your payphone hears';
+    $('#tab-phones').hidden = false;
     $('#tab-records').hidden = false;
     $('#tab-tools').hidden = false;
     $('#run-pill').hidden = false;
