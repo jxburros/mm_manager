@@ -42,7 +42,12 @@ The design borrows from software fax over IP (spandsp, iaxmodem, t38modem):
 
 ## The control panel: no terminal needed
 
-Start **`mm_gui`** (on Windows, double-click `mm_gui.exe` in the `bin` folder). It opens the table editor in your web browser, with everything mm_manager needs on buttons:
+Download it from the [releases page](https://github.com/jxburros/mm_manager/releases), under **Assets**:
+
+* **Windows:** `mmumblephone-<version>-win64.exe` is an installer. Run it, then start **mmumblephone control panel** from the Start menu or the desktop. Windows may say "Windows protected your PC", because the installer isn't signed: choose *More info*, then *Run anyway*. (`…-win64.zip` is the same thing to unpack and run from any folder, without installing.)
+* **macOS and Linux:** unpack the `.tar.gz` and open `bin/mm_gui`. On a Mac, right-click it and choose *Open* the first time, because it isn't signed.
+
+Start **`mm_gui`** and it opens the table editor in your web browser, with everything mm_manager needs on buttons:
 
 * **tables**: your `tables/` folder is open already. Saving writes straight back into it, in any browser.
 * **manager settings**: pick SIP or a serial modem, fill in the number the payphone dials, and press *start mm_manager*. Its output scrolls by on the page. It keeps running when you close the page; the button at the top shows whether it is running.
@@ -52,7 +57,7 @@ Start **`mm_gui`** (on Windows, double-click `mm_gui.exe` in the `bin` folder). 
 
 The welcome screen, tour and help tab cover all of this.
 
-`mm_gui` finds its files by itself: the working folder (the one with `tables/` and `config/`, where mm_manager runs and keeps `mm_manager.db`) is the current folder, `../share/mm_manager` in a release, or the source checkout. mm_manager and the other tools must be next to `mm_gui`. Options:
+`mm_gui` finds its files by itself: the working folder (the one with `tables/` and `config/`, where mm_manager runs and keeps `mm_manager.db`) is the current folder, `../share/mm_manager` in a release, or the source checkout. If that folder can't be written to, as when installed in Program Files, `mm_gui` works in `Documents\mmumblephone` (`~/mmumblephone` on macOS and Linux) instead, starting from a copy of the installed tables and config. Uninstalling or upgrading leaves that folder alone. mm_manager and the other tools must be next to `mm_gui`. Options:
 
 | Option | Default | Description |
 |---|---|---|

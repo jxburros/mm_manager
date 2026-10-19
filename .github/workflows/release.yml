@@ -124,6 +124,14 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install socat
 
+      # CPack's NSIS generator makes the Windows installer (setup .exe).
+      - name: Install NSIS (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe") -and -not (Test-Path "$env:ProgramFiles\NSIS\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+
       - name: Configure CMake
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_arg }}
 
@@ -255,3 +263,18 @@ jobs:
           # Use --repo explicitly for robustness
           # Ensure variables are correctly expanded in the command string
           gh release upload "$($env:RELEASE_TAG)" "$($FullAssetPath)" --repo "${{ github.repository }}" --clobber
+
+      - name: Upload Installer via GH CLI (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.set_tag.outputs.tag }}
+        run: |
+          # CPack puts the installer next to the zip; the programs themselves are in build/Release.
+          $installer = Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE "build") -Filter "mmumblephone-*.exe" | Select-Object -First 1
+          if ($null -eq $installer) {
+            Write-Error "Could not find the installer (mmumblephone-*.exe)"
+            exit 1
+          }
+          Write-Host "Uploading installer $($installer.Name) to release $($env:RELEASE_TAG)"
+          gh release upload "$($env:RELEASE_TAG)" "$($installer.FullName)" --repo "${{ github.repository }}" --clobber

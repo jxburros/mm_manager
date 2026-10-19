@@ -40,6 +40,7 @@
 #ifdef _WIN32
 # include <direct.h>
 # include <shellapi.h>
+# include <shlobj.h>
 # ifdef _MSC_VER
 #  pragma comment(lib, "shell32.lib")
 # endif
@@ -340,7 +341,8 @@ static int mkdir_parents(const char *path) {
 
     snprintf(tmp, sizeof(tmp), "%s", path);
     for (char *p = tmp; *p; p++) {
-        if (*p == '/' || *p == '\\') {
+        /* Skip the root of an absolute path ("/" or "C:\\"). */
+        if ((*p == '/' || *p == '\\') && p > tmp && p[-1] != ':') {
             char save = *p;
 
             *p = '\0';
@@ -1587,6 +1589,94 @@ static void make_token(void) {
     snprintf(g_token, sizeof(g_token), "%08x%08x%08x%08x", r[0], r[1], r[2], r[3]);
 }
 
+static int dir_writable(const char *dir) {
+    char  test[PATH_LEN];
+    FILE *f;
+
+    join_path(test, sizeof(test), dir, ".mm_gui_write_test");
+    if ((f = fopen(test, "wb")) == NULL) {
+        return 0;
+    }
+    fclose(f);
+    (void)remove(test);
+    return 1;
+}
+
+/* Documents\mmumblephone on Windows, ~/mmumblephone elsewhere. */
+static void user_data_dir(char *out, size_t len) {
+#ifdef _WIN32
+    char docs[MAX_PATH];
+
+    if (SHGetFolderPathA(NULL, CSIDL_PERSONAL, NULL, 0, docs) == S_OK) {
+        join_path(out, len, docs, "mmumblephone");
+        return;
+    }
+    join_path(out, len, getenv("USERPROFILE") ? getenv("USERPROFILE") : ".", "mmumblephone");
+#else
+    const char *home = getenv("HOME");
+
+    join_path(out, len, (home && home[0]) ? home : ".", "mmumblephone");
+#endif /* _WIN32 */
+}
+
+/* Copy the files under src into dst, keeping any that dst already has.  html/ stays behind. */
+static void copy_tree(const char *src, const char *dst) {
+    char from[PATH_LEN], to[PATH_LEN];
+
+    if (!is_dir(dst)) {
+        (void)do_mkdir(dst);
+    }
+#ifdef _WIN32
+    {
+        char             pattern[PATH_LEN];
+        WIN32_FIND_DATAA fd;
+        HANDLE           h;
+
+        join_path(pattern, sizeof(pattern), src, "*");
+        h = FindFirstFileA(pattern, &fd);
+        if (h == INVALID_HANDLE_VALUE) {
+            return;
+        }
+        do {
+            const char *name = fd.cFileName;
+#else
+    {
+        DIR           *d = opendir(src);
+        struct dirent *e;
+
+        if (d == NULL) {
+            return;
+        }
+        while ((e = readdir(d)) != NULL) {
+            const char *name = e->d_name;
+#endif /* _WIN32 */
+            if (name[0] == '.' || strcmp(name, "html") == 0) {
+                continue;
+            }
+            join_path(from, sizeof(from), src, name);
+            join_path(to, sizeof(to), dst, name);
+            if (is_dir(from)) {
+                copy_tree(from, to);
+            } else if (!is_file(to)) {
+                size_t         len;
+                unsigned char *data = read_file(from, &len);
+
+                if (data != NULL) {
+                    (void)write_file(to, (const char *)data, len);
+                    free(data);
+                }
+            }
+#ifdef _WIN32
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+#else
+        }
+        closedir(d);
+    }
+#endif /* _WIN32 */
+}
+
 /* Pick the first candidate folder containing marker. */
 static int pick_dir(char *out, size_t len, const char **candidates, int n, const char *marker) {
     for (int i = 0; i < n; i++) {
@@ -1705,6 +1795,27 @@ int main(int argc, char *argv[]) {
         if (!pick_dir(g_root, sizeof(g_root), roots, 5, "tables") &&
             !pick_dir(g_root, sizeof(g_root), roots, 5, "config")) {
             snprintf(g_root, sizeof(g_root), "%s", cwd[0] ? cwd : self);
+        }
+
+        /*
+         * Installed somewhere read-only, like Program Files: work in a folder of the
+         * user's own, starting from a copy of the installed tables and config.
+         */
+        if (!dir_writable(g_root)) {
+            char mine[PATH_LEN], marker[PATH_LEN];
+
+            user_data_dir(mine, sizeof(mine));
+            join_path(marker, sizeof(marker), mine, "tables");
+            if (!is_dir(marker)) {
+                printf("Copying the starting tables and config to %s\n", mine);
+                copy_tree(g_root, mine);
+            }
+            if (!is_dir(mine) || !dir_writable(mine)) {
+                fprintf(stderr, "mm_gui: can't write to %s or %s.  Choose a working folder with -w.\n", g_root, mine);
+                return -EACCES;
+            }
+            copy_str(g_root, sizeof(g_root), mine);
+            absolute(g_root, sizeof(g_root));
         }
     }
 
