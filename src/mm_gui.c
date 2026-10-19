@@ -1387,14 +1387,30 @@ static int table_name_ok(const char *s) {
 /*
  * GET /api/db: the tables in mm_manager.db and their row counts.
  * GET /api/db?table=T&limit=N&offset=M: rows of one table, newest first.
+ * Either one with &terminal=<terminal ID> only counts and returns that terminal's rows,
+ * and leaves out the tables that have no TERMINAL_ID column.
  */
+static int terminal_id_ok(const char *s);
+
 static void api_db(request_t *req) {
     sqlite3      *db = NULL;
     sqlite3_stmt *st = NULL;
     sbuf_t        b = { 0 };
-    char          table[80], limit_s[16], offset_s[16];
-    char          sql[256];
+    char          table[80], limit_s[16], offset_s[16], terminal[16];
+    char          sql[320];
+    const char   *where;
     int           limit, offset;
+
+    if (query_param(req, "terminal", terminal, sizeof(terminal)) && terminal[0] != '\0') {
+        if (!terminal_id_ok(terminal)) {
+            respond_error(req, 400, "bad terminal ID");
+            return;
+        }
+        where = " WHERE TERMINAL_ID = ?1";
+    } else {
+        terminal[0] = '\0';
+        where       = "";
+    }
 
     if (!is_file(DB_FILE)) {
         sb_puts(&b, "{\"ok\":true,\"exists\":false,\"tables\":[]}");
@@ -1422,9 +1438,20 @@ static void api_db(request_t *req) {
                 if (name == NULL || !table_name_ok(name)) {
                     continue;
                 }
-                snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM \"%s\"", name);
-                if (sqlite3_prepare_v2(db, sql, -1, &cnt, NULL) == SQLITE_OK && sqlite3_step(cnt) == SQLITE_ROW) {
-                    rows = sqlite3_column_int64(cnt, 0);
+                snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM \"%s\"%s", name, where);
+                if (sqlite3_prepare_v2(db, sql, -1, &cnt, NULL) != SQLITE_OK) {
+                    sqlite3_finalize(cnt);
+                    if (terminal[0]) {
+                        continue;   /* no TERMINAL_ID column */
+                    }
+                    cnt = NULL;
+                } else {
+                    if (terminal[0]) {
+                        sqlite3_bind_text(cnt, 1, terminal, -1, SQLITE_STATIC);
+                    }
+                    if (sqlite3_step(cnt) == SQLITE_ROW) {
+                        rows = sqlite3_column_int64(cnt, 0);
+                    }
                 }
                 sqlite3_finalize(cnt);
                 sb_puts(&b, first ? "{\"name\":" : ",{\"name\":");
@@ -1451,14 +1478,17 @@ static void api_db(request_t *req) {
         respond_error(req, 400, "bad table name");
         return;
     }
-    snprintf(sql, sizeof(sql), "SELECT * FROM \"%s\" ORDER BY rowid DESC LIMIT %d OFFSET %d", table, limit, offset);
+    snprintf(sql, sizeof(sql), "SELECT * FROM \"%s\"%s ORDER BY rowid DESC LIMIT %d OFFSET %d", table, where, limit, offset);
     if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK) {
-        snprintf(sql, sizeof(sql), "SELECT * FROM \"%s\" LIMIT %d OFFSET %d", table, limit, offset);
+        snprintf(sql, sizeof(sql), "SELECT * FROM \"%s\"%s LIMIT %d OFFSET %d", table, where, limit, offset);
         if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) != SQLITE_OK) {
             respond_error(req, 404, sqlite3_errmsg(db));
             sqlite3_close(db);
             return;
         }
+    }
+    if (terminal[0]) {
+        sqlite3_bind_text(st, 1, terminal, -1, SQLITE_STATIC);
     }
     sb_puts(&b, "{\"ok\":true,\"columns\":[");
     for (int i = 0; i < sqlite3_column_count(st); i++) {
@@ -1502,8 +1532,11 @@ static void api_db(request_t *req) {
         sb_puts(&b, "]");
     }
     sqlite3_finalize(st);
-    snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM \"%s\"", table);
-    if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK && sqlite3_step(st) == SQLITE_ROW) {
+    snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM \"%s\"%s", table, where);
+    if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK && terminal[0]) {
+        sqlite3_bind_text(st, 1, terminal, -1, SQLITE_STATIC);
+    }
+    if (st != NULL && sqlite3_step(st) == SQLITE_ROW) {
         sb_printf(&b, "],\"total\":%lld}", (long long)sqlite3_column_int64(st, 0));
     } else {
         sb_puts(&b, "],\"total\":null}");
