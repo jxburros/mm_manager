@@ -1,5 +1,110 @@
-# Millennium Manager - mm_manager
+# mmumblephone
 
+### A SIP-enabled fork of [mm_manager](https://github.com/hharte/mm_manager), the Millennium Manager by Howard M. Harte
+
+> **mmumblephone is a fork of [mm_manager](https://github.com/hharte/mm_manager), and is built entirely on top of it.**
+> All of the Millennium Manager itself is the work of Howard M. Harte and the mm_manager contributors: the reverse-engineered terminal protocol, table generation and download, provisioning, call rating, CDR, alarm and maintenance reporting, and every utility in this repository. That work made this fork possible.
+>
+> This fork adds one feature on top: a **SIP client with a software ("virtual") modem**. A Millennium payphone can then call the Manager over VoIP without a physical modem or a second analog phone line.
+>
+> For anything about mm_manager itself, please go to the [upstream project](https://github.com/hharte/mm_manager). Please report problems with the SIP / virtual modem code here, not upstream.
+
+
+## What this fork adds
+
+The Millennium terminal calls its Manager with a 1200 bps Bell 212A modem. Upstream mm_manager answers that call with a physical modem on a second phone line. mmumblephone can instead register to a SIP server (Asterisk, FreePBX, a VoIP provider, etc.) as an extension or SIP number. When the payphone dials that number, mmumblephone answers the SIP call and runs a **software Bell 212A modem** on the call's G.711 audio. The rest of mm_manager sees an ordinary Hayes-style modem.
+
+```
+ Millennium ──analog──► ATA (FXS) ──SIP/RTP──► PBX / SIP provider ──SIP/RTP──► mmumblephone
+  terminal               G.711, no VAD/EC                                     (SIP UA + soft modem
+                                                                               + mm_manager)
+```
+
+The design borrows from software fax over IP (spandsp, iaxmodem, t38modem):
+
+* **A soft modem on PCM.** Like a soft fax modem, the Bell 212A modem works directly on 8 kHz G.711 samples. The receiver recovers symbol timing from the signal, and differential PSK detection removes the need for carrier phase recovery. It therefore copes with the clock drift and jitter of a VoIP path without a real-time clock of its own.
+* **A virtual tty.** Like iaxmodem, the virtual modem emulates the AT command set, RING / CONNECT / NO CARRIER result codes, DCD, and DTR hang-up. mm_manager's existing modem and protocol code runs unchanged.
+* **Voice-band data (VBD) conditioning.** As with G.711 fax pass-through, the SDP offers only PCMU/PCMA. It also asks the far end to treat the call as modem data (`a=gpmd:<pt> vbd=yes`, ITU-T V.152) with silence suppression off. Gateways that honor this disable VAD, comfort noise and adaptive jitter buffering for the call.
+* **Robust media.** RTP is symmetric, so it latches to wherever the far end's audio comes from (NAT). A small re-ordering buffer fixes out-of-order packets, and lost packets are filled with silence rather than stalling the modem. If audio stops entirely, carrier loss is still detected.
+
+### What's included
+
+| File | Purpose |
+|---|---|
+| `src/mm_softmodem.c` | Software Bell 212A modem (answer and originate, 1200 bps DPSK, 1+x⁻¹⁴+x⁻¹⁷ scrambler, async framing) and G.711 codecs |
+| `src/mm_sip.c` | Minimal SIP user agent: REGISTER with MD5 digest auth and NAT discovery, INVITE/ACK/BYE/CANCEL/OPTIONS/UPDATE, RTP |
+| `src/mm_vmodem.c` | Virtual modem: AT command emulation, auto-answer, 20 ms media clock, glue between SIP and the soft modem |
+| `src/mm_osal.c` | Small sockets/threads/time portability layer (Linux, macOS, Windows) |
+| `tests/` | Modem loopback tests (noise, echo, clock offset, A-law) and an end-to-end SIP test (`ctest`) |
+
+## Using the SIP virtual modem
+
+Use `-S` in place of `-m -f <modem device>`:
+
+```
+# Register as extension 1000 on a PBX, and have the payphone dial 1000:
+mm_manager -S 1000:secret@pbx.example.com -n 1000
+
+# Keep the password off the command line:
+MM_SIP_PASSWORD=secret mm_manager -S 1000@pbx.example.com:5060 -n 1000
+
+# No registration: accept direct SIP calls (e.g. an ATA configured to dial sip:mm_manager@<ip>:5062)
+mm_manager -S "listen;port=5062" -n 5551212
+```
+
+The `-n` NCC number(s) must be the number the payphone dials to reach the SIP number mmumblephone is registered on.
+
+`-S` accepts `user[:password]@registrar[:port]` or `listen`, followed by optional `;option=value` settings:
+
+| Option | Default | Description |
+|---|---|---|
+| `port` | 5060 | Local SIP UDP port |
+| `rtp_port` | 10000 | Local RTP UDP port (the next free even port is used) |
+| `expires` | 300 | Registration expiry, in seconds |
+| `auth_user` | user | Authentication user name, if different from the SIP user |
+| `domain` | registrar | SIP domain used in From/To/Request-URI |
+| `local_ip` | auto | IP address to advertise in Contact and SDP |
+| `codec` | `pcmu` | Preferred codec: `pcmu` (µ-law) or `pcma` (A-law) |
+| `answer_tone` | 2225 | Answer tone: 2225 Hz (Bell) or 2100 Hz (V.25) |
+
+Example: `-S "1000:secret@192.168.1.10;port=5070;rtp_port=12000;codec=pcmu"`
+
+The modem init string (`-i`) is still accepted. The virtual modem answers after `S0` rings (default 1), hangs up when DTR drops, and ignores other settings. `-v` prints extra detail, and `-vv` also prints SIP messages.
+
+### ATA / PBX configuration
+
+These are the same settings that make fax and modem calls work over VoIP:
+
+* Use **G.711 µ-law (PCMU)**, or A-law where that is the norm. No compressed codecs.
+* **Disable VAD / silence suppression, comfort noise and echo cancellation** on the ATA port the payphone uses.
+* Use a **fixed jitter buffer** (e.g. 60–100 ms) rather than an adaptive one. Prefer a LAN path between the ATA and mmumblephone.
+* The ATA must provide **polarity reversal on answer** (answer supervision), as with any Millennium installation.
+* Disable T.38 / fax re-INVITE on the line. Bell 212A is not fax, and mmumblephone only handles G.711.
+* On Asterisk/FreePBX, make sure the call is not transcoded, and that `directmedia`/re-INVITEs do not break the audio path.
+
+### Status and limitations
+
+* The software modem is tested against an independent implementation: spandsp's V.22 modem at 1200 bps, which uses the same modulation and scrambler. It exchanges data error-free with it in both directions. It also passes loopback tests with noise, echo and ±200 ppm clock offset. **It has not yet been tested against a real Millennium terminal**. Please report results, good or bad.
+* Bell 212A only (1200 bps). Bell 103 (300 bps) fallback is not implemented.
+* UDP, IPv4, one call at a time. TLS/SRTP and SIP over TCP are not supported.
+* The Manager only answers calls, as in upstream mm_manager. The Manager never calls the payphone.
+
+
+## Credits
+
+* **[mm_manager](https://github.com/hharte/mm_manager)**: Copyright (c) 2020-2025 Howard M. Harte, MIT License. mmumblephone is a fork of mm_manager, and everything except the SIP virtual modem is Howard's work. Thank you!
+* The SIP virtual modem additions are Copyright (c) 2026 the mmumblephone contributors, under the same MIT License.
+* Design inspiration for the virtual modem: [spandsp](https://github.com/freeswitch/spandsp) by Steve Underwood, [iaxmodem](https://iaxmodem.sourceforge.net/) and [t38modem](https://t38modem.sourceforge.net/).
+
+The executable is still named `mm_manager`, so that existing scripts and documentation keep working.
+
+---
+
+# Original mm_manager documentation
+
+The rest of this document is the upstream mm_manager documentation, lightly annotated where the SIP virtual modem changes things.
+
+## Millennium Manager - mm_manager
 
 ### Manager for Nortel Millennium Payphones
 
@@ -308,8 +413,8 @@ The `mm_manager` has been tested with a Nortel Multi-Pay (coin, credit card) Ter
 1. Nortel Millennium Terminal running stock firmware (v1.20 or v2.20 is best, but other versions may work.)  **_Some Millennium Terminals purchased from online phone stores may have been re-programmed with “demo” firmware that does not need a Manager_**.  If you have one of these phones, you’ll have to program the phone back to [stock firmware](https://github.com/muccc/millennium/tree/master/firmware).
 2. 24VDC @500mA Power Supply for Millennium Terminal
 3. [4-pin plug-in screw terminal block](https://www.amazon.com/gp/product/B07SWSLR61) to connect 24VDC power and Tip/Ring to the terminal.
-4. Two phone lines (one for `mm_manager`, one for the Millennium terminal.)  They can be real POTS lines, or lines from your own PBX, but the Millennium should be able to dial the manager with a 1- to 15-digit number.
-5. 1200-baud or faster modem that supports [Bell 212A](https://en.wikipedia.org/wiki/Bell_212A) modulation.  I like the [Lenovo 56K USB](https://www.ebay.com/sch/i.html?&_nkw=lenovo+56k+usb+modem) modems, but any 56K modem with Conexant chipset should work.  Note for Linux users - Conexant soft-modems have never had a fully open-source driver, and the out-of-tree driver has not been maintained since kernel v2.4 - something like the US Robotics 5637 or another "real" modem where the device actually is responsible for encoding and decoding the data works well.
+4. Two phone lines (one for `mm_manager`, one for the Millennium terminal.)  They can be real POTS lines, or lines from your own PBX, but the Millennium should be able to dial the manager with a 1- to 15-digit number.  _(mmumblephone: with the SIP virtual modem, the Manager side needs only a SIP account or PBX extension instead of a phone line.)_
+5. _(mmumblephone: not needed when using the SIP virtual modem, `-S`.)_ 1200-baud or faster modem that supports [Bell 212A](https://en.wikipedia.org/wiki/Bell_212A) modulation.  I like the [Lenovo 56K USB](https://www.ebay.com/sch/i.html?&_nkw=lenovo+56k+usb+modem) modems, but any 56K modem with Conexant chipset should work.  Note for Linux users - Conexant soft-modems have never had a fully open-source driver, and the out-of-tree driver has not been maintained since kernel v2.4 - something like the US Robotics 5637 or another "real" modem where the device actually is responsible for encoding and decoding the data works well.
 6. `mm_manager` software and a Windows, Linux machine (Raspberry Pi works great) or MacOS machine.  This machine should be available 24x7 so the terminal can call in when needed.
 7. **_All terminals except desk:_** T-Key such as the [Jonard JIC-719A](https://jonard.com/jic-719a-t-key-tool?v=248) to open the payphone.  I don’t recommend the flat, stamped T-keys as they are prone to bending.
 8. **_All terminals except desk:_** Keys for your terminal’s upper and lower locks, if locks are present.
@@ -344,7 +449,7 @@ Compile `mm_manager` with Microsoft Visual Studio 2019 or later with CMake, usin
 
 
 ```
-usage: mm_manager [-vhmq] [-f <filename>] [-i "modem init string"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>]
+usage: mm_manager [-vhmq] [-f <filename>] [-i "modem init string"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>]
         -a <access_code> - Craft 7-digit access code (default: CRASERV)
         -b <baudrate> - Modem baud rate, in bps.  Defaults to 19200.
         -c - Always download complete table set.
@@ -360,6 +465,11 @@ usage: mm_manager [-vhmq] [-f <filename>] [-i "modem init string"] [-l <logfile>
         -p <pcapfile> - Save packets in a .pcap file.
         -q - Don't display sign-on banner.
         -r - Rating test mode: Amount charged determined by last 4 digits of dialed number.
+        -S <sip_config> - Use the SIP virtual modem instead of a serial modem.  <sip_config> is:
+             user[:password]@registrar[:port][;option=value...] to register with a SIP server, or
+             listen[;option=value...] to accept direct SIP calls without registering.
+             Options: port, rtp_port, expires, auth_user, domain, local_ip, codec=pcmu|pcma,
+             answer_tone=2225|2100.  The password may also be given in MM_SIP_PASSWORD.
         -s - Download only minimum required tables to terminal.
         -t <term_table_dir> - terminal-specific table directory.
         -u <port> - Send packets as UDP to <port>.

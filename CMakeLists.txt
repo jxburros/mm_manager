@@ -1,4 +1,5 @@
-﻿# CMakeList.txt : CMake project for mm_manager
+﻿# CMakeList.txt : CMake project for mmumblephone, a SIP-enabled fork of
+# mm_manager by Howard M. Harte (https://github.com/hharte/mm_manager).
 #
 cmake_minimum_required (VERSION 3.25)
 
@@ -135,6 +136,14 @@ set(MANAGER_SRC
     "src/mm_udp.c"
     "src/mm_udp.h"
     "src/mm_sqlite3.c"
+    "src/mm_osal.c"
+    "src/mm_osal.h"
+    "src/mm_sip.c"
+    "src/mm_sip.h"
+    "src/mm_softmodem.c"
+    "src/mm_softmodem.h"
+    "src/mm_vmodem.c"
+    "src/mm_vmodem.h"
 )
 
 set(DLOG2PCAP_SRC
@@ -149,7 +158,7 @@ add_executable (mm_manager ${MANAGER_SRC})
 if(MSVC)
 TARGET_LINK_LIBRARIES(mm_manager mm_serial mm_util sqlite3 wsock32 ws2_32)
 else()
-TARGET_LINK_LIBRARIES(mm_manager mm_serial mm_util sqlite3 pthread dl)
+TARGET_LINK_LIBRARIES(mm_manager mm_serial mm_util sqlite3 pthread dl m)
 endif()
 add_executable (mm_admess "src/mm_admess.c" "src/mm_manager.h")
 TARGET_LINK_LIBRARIES(mm_admess mm_util)
@@ -208,6 +217,21 @@ if(MSVC)
   target_link_libraries(mm_smcard wsock32 ws2_32 sqlite3)
   endif()
 
+# Tests for the SIP virtual modem (software Bell 212A modem and SIP user agent.)
+enable_testing()
+add_executable (test_softmodem "tests/test_softmodem.c" "src/mm_softmodem.c" "src/mm_softmodem.h")
+add_executable (test_sip_vmodem "tests/test_sip_vmodem.c" "src/mm_sip.c" "src/mm_vmodem.c"
+                "src/mm_softmodem.c" "src/mm_osal.c")
+if(MSVC)
+TARGET_LINK_LIBRARIES(test_sip_vmodem wsock32 ws2_32)
+else()
+TARGET_LINK_LIBRARIES(test_softmodem m)
+TARGET_LINK_LIBRARIES(test_sip_vmodem pthread m)
+endif()
+add_test(NAME softmodem COMMAND test_softmodem)
+add_test(NAME sip_vmodem COMMAND test_sip_vmodem)
+set_tests_properties(sip_vmodem PROPERTIES TIMEOUT 120)
+
 # Install
 set(INSTALL_TARGETS
     "mm_manager"
@@ -252,9 +276,10 @@ install(FILES generate_intl_sbr.py generate_lcd.py generate_lcd_lata.py generate
 # --- CPack configuration ---
 
 # Set basic package information
-set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
-set(CPACK_PACKAGE_VENDOR "Howard M. Harte")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Millennium Manager")
+# mmumblephone is a fork of mm_manager (https://github.com/hharte/mm_manager) by Howard M. Harte.
+set(CPACK_PACKAGE_NAME "mmumblephone")
+set(CPACK_PACKAGE_VENDOR "mmumblephone contributors, based on mm_manager by Howard M. Harte")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "mmumblephone - SIP-enabled fork of Millennium Manager (mm_manager)")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
