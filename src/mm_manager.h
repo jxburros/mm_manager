@@ -1356,6 +1356,9 @@ typedef struct mm_context {
     uint8_t access_code[4];
     uint8_t key_card_number[5];
     uint8_t minimal_table_set;
+    uint8_t table_retries;      /* Times to resend a table the terminal didn't acknowledge (-R). */
+    uint8_t push_updates;       /* Send waiting table updates when a terminal calls in (-U). */
+    uint32_t callin_interval;   /* Default minutes between scheduled call-ins (-I). */
     /* Manager-wide */
     uint8_t cdr_ack_buffer[PKT_TABLE_DATA_LEN_MAX];
     uint8_t cdr_ack_buffer_len;

@@ -5,9 +5,9 @@
 > **mmumblephone is a fork of [mm_manager](https://github.com/hharte/mm_manager), and is built entirely on top of it.**
 > All of the Millennium Manager itself is the work of Howard M. Harte and the mm_manager contributors: the reverse-engineered terminal protocol, table generation and download, provisioning, call rating, CDR, alarm and maintenance reporting, and every utility in this repository. That work made this fork possible.
 >
-> This fork adds one feature on top: a **SIP client with a software ("virtual") modem**. A Millennium payphone can then call the Manager over VoIP without a physical modem or a second analog phone line.
+> This fork adds one main feature on top: a **SIP client with a software ("virtual") modem**. A Millennium payphone can then call the Manager over VoIP without a physical modem or a second analog phone line. It also adds a browser control panel, and tools for [several payphones](#several-payphones-updates-and-call-ins): per-phone settings, saved configurations, retried updates and call-in schedules.
 >
-> For anything about mm_manager itself, please go to the [upstream project](https://github.com/hharte/mm_manager). Please report problems with the SIP / virtual modem code here, not upstream.
+> For anything about mm_manager itself, please go to the [upstream project](https://github.com/hharte/mm_manager). Please report problems with the code this fork adds here, not upstream.
 
 
 ## What this fork adds
@@ -50,6 +50,7 @@ Download it from the [releases page](https://github.com/jxburros/mm_manager/rele
 Start **`mm_gui`** and it opens the table editor in your web browser, with everything mm_manager needs on buttons:
 
 * **tables**: your `tables/` folder is open already. Saving writes straight back into it, in any browser.
+* **phones**: every payphone, by its terminal ID. Name it, change its ID when it changes on the phone, set how often it calls in, see whether its last update went through, and save its tables as a configuration to apply to other phones. See [several payphones](#several-payphones-updates-and-call-ins).
 * **manager settings**: pick SIP or a serial modem, fill in the number the payphone dials, and press *start mm_manager*. Its output scrolls by on the page. It keeps running when you close the page; the button at the top shows whether it is running.
 * **rom versions**: edits `config/control_rom_versions.csv` in place. mm_manager reads it when it starts.
 * **records**: what payphones reported when they called in (calls, alarms, cash box counts, software versions), read from `mm_manager.db`. Save rows as CSV, or download the database.
@@ -138,6 +139,35 @@ These are the same settings that make fax and modem calls work over VoIP:
 * UDP, IPv4, one call at a time. TLS/SRTP and SIP over TCP are not supported.
 * The Manager only answers calls, as in upstream mm_manager. The Manager never calls the payphone.
 
+
+## Several payphones, updates and call-ins
+
+One mm_manager serves any number of payphones. It tells them apart by the **terminal ID**, the 10-digit number keyed into each payphone when it is installed (normally the payphone's own phone number), which the terminal sends with every message. Each payphone has its own folder, `tables/<terminal ID>/`:
+
+| File | Written by | Purpose |
+|---|---|---|
+| `mm_table_XX.bin` | you | Tables only this payphone gets. For any other table, mm_manager uses the model folder (`coin/`, `desk/`, ...), then `default/`. |
+| `phone.cfg` | you, or the control panel | This payphone's settings, one `key=value` per line: `name`, `callin_interval` (minutes between call-ins, 5 to 143999), `callin_retry` (minutes before it retries a failed call-in, 1 to 59), `cdr_threshold` (call in once it holds this many call records, 1 to 50). |
+| `phone_status` | mm_manager | What mm_manager last saw: `terminal_type`, `last_call`, `last_update` (`complete`, or why it failed). |
+| `update_pending` | mm_manager, or you | If present, every table is sent the next time this payphone calls in. mm_manager creates it when a download fails and removes it after a complete one. |
+| `table_update.log` | mm_manager | The time of each complete download. |
+
+The **phones** tab of the control panel manages these folders. It lists every payphone that has called in, and you can add one before it does. Changing a payphone's terminal ID renames its folder and moves its records in `mm_manager.db` to the new ID. Do this when the ID is changed on the payphone itself.
+
+**Saved configurations** are kept in `configurations/<name>/`: a payphone's own tables and its call-in settings. *Save as a configuration* on one payphone, then *apply* it to others. Applying copies the tables into each payphone's folder, replacing the tables and settings it had (untick *replace* to keep them), and marks it to get every table at its next call.
+
+**Retries.** If the payphone doesn't acknowledge a table, mm_manager sends it again, up to 2 times (`-R <n>`, 0 to 10), before going on to the next one. A download is only recorded as complete when every table was acknowledged. If one wasn't, or the call dropped, mm_manager creates `update_pending`, so everything is sent again at the payphone's next call.
+
+**Calling in.** The manager never calls a payphone, but it tells each payphone when to call in. That schedule goes to the payphone with its tables, in the call-in parameters table (0x23). The default is every 12 hours, as in upstream mm_manager. Change it for all payphones with `-I <minutes>`, or for one payphone with `callin_interval` in its `phone.cfg` (the *Calling in* card on the phones tab). A payphone only calls in on a schedule until midnight, then starts again at the same time of day the next day. For intervals under a day, mm_manager therefore starts the schedule as early in the day as the interval allows.
+
+**Picking up updates when a payphone calls in (`-U`).** A payphone normally gets new tables only when it asks for them (on install, or a forced download from its craft menu). With `-U`, when a payphone calls in on its schedule, mm_manager checks whether it has an update waiting. An update is waiting if `update_pending` is there (mm_manager then sends every table), or if one of its tables, or its `phone.cfg`, changed since its last complete update (then just the changed tables). If so, mm_manager answers the call-in with a table update instead of asking for the payphone's data. The payphone reports its data on its next call. mm_manager only does this for a payphone whose model it already knows, and that it has updated before (or that has `update_pending`). Together with `-I`, payphones check for new tables every few hours by themselves.
+
+> `-U` is experimental. It is tested against a simulated terminal, but not yet against a real Millennium. Please report how it goes.
+
+```
+# Payphones call in every 2 hours, and pick up whatever changed:
+mm_manager -S 1000:secret@pbx.example.com -n 1000 -I 120 -U
+```
 
 ## Editing tables in your browser
 
@@ -518,7 +548,7 @@ Compile `mm_manager` with Microsoft Visual Studio with CMake 3.25 or later (Visu
 
 
 ```
-usage: mm_manager [-vhmqD] [-f <filename>] [-i "modem init string"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>]
+usage: mm_manager [-vhmqDU] [-f <filename>] [-i "modem init string"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>] [-R <retries>] [-I <minutes>]
         -a <access_code> - Craft 7-digit access code (default: CRASERV)
         -b <baudrate> - Modem baud rate, in bps.  Defaults to 19200.
         -c - Always download complete table set.
@@ -527,6 +557,8 @@ usage: mm_manager [-vhmqD] [-f <filename>] [-i "modem init string"] [-l <logfile
         -e <error_inject_type> - Inject error on SIGBRK.
         -f <filename> modem device or file.  With -m, -f auto (or leaving out -f) uses the first modem found.
         -h this help.
+        -I <minutes> - Minutes between a terminal's scheduled call-ins (default: 720).
+             A terminal's <term_table_dir>/<terminal_id>/phone.cfg can set its own callin_interval.
         -i "modem init string" - Modem initialization string.
         -k <key_code> - Desk Terminal 10-digit key card code (default: 4012888888)
         -l <logfile> - log bytes transmitted to and received from the terminal.  Useful for debugging.
@@ -534,6 +566,7 @@ usage: mm_manager [-vhmqD] [-f <filename>] [-i "modem init string"] [-l <logfile
         -n <Primary NCC Number> [-n <Secondary NCC Number>] - specify primary and optionally secondary NCC number.
         -p <pcapfile> - Save packets in a .pcap file.
         -q - Don't display sign-on banner.
+        -R <retries> - Resend a table the terminal doesn't acknowledge up to <retries> times (default: 2).
         -r - Rating test mode: Amount charged determined by last 4 digits of dialed number.
         -S <sip_config> - Use the SIP virtual modem instead of a serial modem.  <sip_config> is:
              user[:password]@registrar[:port][;option=value...] to register with a SIP server, or
@@ -542,6 +575,7 @@ usage: mm_manager [-vhmqD] [-f <filename>] [-i "modem init string"] [-l <logfile
              answer_tone=2225|2100.  The password may also be given in MM_SIP_PASSWORD.
         -s - Download only minimum required tables to terminal.
         -t <term_table_dir> - terminal-specific table directory.
+        -U - When a terminal calls in and has new tables waiting (or a failed update to retry), send them.
         -u <port> - Send packets as UDP to <port>.
         -v verbose (multiple v's increase verbosity.
         -w - don't monitor the modem for carrier loss.
@@ -558,7 +592,8 @@ Every push to `main` builds and tests the code on Linux (x64), macOS (x64) and W
 
 `mm_manager` finds its files relative to the current directory, so start it from the folder that contains `tables/` and `config/` (normally your checkout), or point it at your tables with `-d` and `-t`.  The files are:
 
-* `tables/default` and `tables/` - the default and terminal-specific table folders (`-d`, `-t`).
+* `tables/default` and `tables/` - the default and terminal-specific table folders (`-d`, `-t`).  See [several payphones](#several-payphones-updates-and-call-ins) for the other files in a terminal's folder.
+* `configurations/` - configurations saved from the control panel's phones tab.
 * `config/control_rom_versions.csv` - maps each terminal's control ROM edition to its terminal type.
 * `mm_manager.db` - a SQLite database that `mm_manager` creates in the current directory.  It keeps what the terminals report: alarms, call detail records, call and performance statistics, cash box status and collections, terminal status and software versions.
 

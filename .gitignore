@@ -49,3 +49,8 @@ out/
 *.bin
 .vscode/
 build/
+configurations/
+phone.cfg
+phone_status
+table_update.log
+update_pending
