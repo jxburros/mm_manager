@@ -36,6 +36,7 @@ The design borrows from software fax over IP (spandsp, iaxmodem, t38modem):
 | `src/mm_vmodem.c` | Virtual modem: AT command emulation, auto-answer, 20 ms media clock, glue between SIP and the soft modem |
 | `src/mm_osal.c` | Small sockets/threads/time portability layer (Linux, macOS, Windows) |
 | `src/mm_detect.c` | Serial modem detection: enumerates serial ports and probes them with AT commands (`-D`, `-f auto`) |
+| `html/table_editor.html` | Browser-based editor for the configuration tables, the mm_manager command line and the control ROM version list |
 | `tests/` | Modem loopback tests (noise, echo, clock offset, A-law), an end-to-end SIP test and a modem detection test (`ctest`) |
 
 ## Using the SIP virtual modem
@@ -107,6 +108,25 @@ These are the same settings that make fax and modem calls work over VoIP:
 * Bell 212A only (1200 bps). Bell 103 (300 bps) fallback is not implemented.
 * UDP, IPv4, one call at a time. TLS/SRTP and SIP over TCP are not supported.
 * The Manager only answers calls, as in upstream mm_manager. The Manager never calls the payphone.
+
+
+## Editing tables in your browser
+
+`html/table_editor.html` replaces hex editing. It is a single page with no build step and no server. Open it in a browser, either from your checkout or [online](https://html-preview.github.io/?url=https://github.com/jxburros/mm_manager/blob/main/html/table_editor.html). Your files stay in the browser and are written only when you press save.
+
+* **Tables.** Open your `tables/` folder to see `default/`, the model folders and any terminal-specific folders together, or open single `mm_table_XX.bin` files. Each table that mm_manager reads from disk has its own form, with labelled fields, flags as checkboxes, phone numbers as digits, prices in dollars and times in seconds:
+  * feature configuration, user interface parameters, coin validation and smart card parameters
+  * card, carrier, call screening, repertory dialer, service level, rate and international rate lists
+  * advertising messages, with a display preview and import and export in the `config/advert_prompts.csv` format
+  * visual prompts, plus the LCD and NPA tables as maps you can paint
+  * every table, including undocumented ones such as MODEM (0x21) and DIALRL (0x3e), as editable bytes
+* **New and per-terminal tables.** *New table* creates any table, for example `mm_table_1e.bin`, pre-filled with mm_manager's built-in user interface defaults. *Copy for a terminal* saves a table into `tables/<terminal number>/`.
+* **Manager settings.** This tab builds the `mm_manager` command line: SIP or serial modem, NCC numbers, access code, key card, table folders and logging. It also lists the tables that mm_manager generates on each download, and which option controls each one.
+* **ROM versions.** This tab edits `config/control_rom_versions.csv`, which maps control ROM editions to terminal types. It checks each row against the limits of mm_manager's CSV reader.
+
+* **Help and tour.** The first visit opens a short welcome. *Take the tour* walks you through the real controls on practice tables, waiting for you to do each step (or doing it for you). The *help* tab has the full guide: where mm_manager looks for tables, which tables each firmware version gets, what every table does, and a glossary. Each table also shows what it does and a few tips; turn these hints off with *hints* at the top.
+
+In Chrome, Edge and other Chromium browsers, *save* writes straight back to the folder you opened. In other browsers, *save* downloads the file, and you copy it into place.
 
 
 ## Credits
@@ -563,7 +583,7 @@ Each packet response from the Manager includes the Terminal’s phone number, fo
 
 In the case of large table download (> 245 bytes) to the Millennium terminal, the table payload is split into 245-byte chunks, but the Table ID is only included in the first packet.
 
-The following are some of the tables used by the Millennium terminal.  They should be customized (using a hex editor) for your specific phone.  Some parameters (like NCC numbers and Access Code) can be changed via command-line parameters to `mm_manager`.
+The following are some of the tables used by the Millennium terminal.  They should be customized (using a hex editor) for your specific phone.  _(mmumblephone: or with the [table editor](#editing-tables-in-your-browser), `html/table_editor.html`.)_  Some parameters (like NCC numbers and Access Code) can be changed via command-line parameters to `mm_manager`.
 
 ***New:*** You can customize the Advertising Messages (ADMESS table 0x1d) using the [web-based editor](https://html-preview.github.io/?url=https://github.com/hharte/mm_manager/blob/main/html/admess_editor.html).  Upload your mm_table_1d.bin file, modify it as needed, and then download the updated version from the webpage.
 

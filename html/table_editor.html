@@ -1,0 +1,3398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mmumblephone table editor</title>
+<meta name="description" content="Edit Nortel Millennium configuration tables (mm_table_XX.bin), build the mm_manager command line, and maintain the control ROM version list.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cg transform='rotate(-3 60 60)'%3E%3Crect x='20' y='20' width='90' height='90' rx='30' fill='%231B998B'/%3E%3Crect x='10' y='10' width='90' height='90' rx='30' fill='%23FF6FA8'/%3E%3Cpath d='M30 32h50a10 10 0 0 1 10 10v24a10 10 0 0 1-10 10H54L40 88V76H30a10 10 0 0 1-10-10V42a10 10 0 0 1 10-10z' fill='%23FBF6EE'/%3E%3Cpath d='M33 60c0-9 10-15 22-15s22 6 22 15h-8c0-5-6-8-14-8s-14 3-14 8z' fill='%233B1F5C'/%3E%3Crect x='29' y='57' width='15' height='9' rx='4.5' fill='%233B1F5C'/%3E%3Crect x='66' y='57' width='15' height='9' rx='4.5' fill='%233B1F5C'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Shrikhand&display=swap" rel="stylesheet">
+<style>
+/*
+ * mmumblephone table editor
+ *
+ * Styled after the "Mumble Zine" guide: flat riso inks, paper background,
+ * solid offset print shadows, speech bubbles, one Shrikhand moment per screen.
+ */
+:root {
+    --riso-pink: #FF6FA8;
+    --riso-teal: #1B998B;
+    --sunny-yellow: #FFE15A;
+    --ink: #3B1F5C;
+    --paper: #FBF6EE;
+    --pink-ink: #C22A6A;
+    --deep-teal: #127368;
+
+    --bg: var(--paper);
+    --surface: #FFFDF9;
+    --text: var(--ink);
+    --muted: rgba(59, 31, 92, 0.6);
+    --line: var(--ink);
+    --soft-line: rgba(59, 31, 92, 0.18);
+    --link: var(--pink-ink);
+    --label: var(--deep-teal);
+    --shadow: var(--riso-teal);
+    --card-shadow: var(--riso-teal);
+    --danger-bg: var(--ink);
+    --danger-text: var(--paper);
+    --vfd-bg: var(--ink);
+    --vfd-text: var(--paper);
+    --grain: 0.3;
+    color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #24123A;
+        --surface: var(--ink);
+        --text: var(--paper);
+        --muted: rgba(251, 246, 238, 0.68);
+        --line: rgba(251, 246, 238, 0.85);
+        --soft-line: rgba(251, 246, 238, 0.2);
+        --link: var(--riso-pink);
+        --label: rgba(251, 246, 238, 0.8);
+        --shadow: var(--riso-teal);
+        --card-shadow: #1A0D29;
+        --danger-bg: var(--paper);
+        --danger-text: var(--ink);
+        --vfd-bg: #1A0D29;
+        --vfd-text: var(--sunny-yellow);
+        --grain: 0.2;
+        color-scheme: dark;
+    }
+}
+:root[data-theme="dark"] {
+    --bg: #24123A;
+    --surface: var(--ink);
+    --text: var(--paper);
+    --muted: rgba(251, 246, 238, 0.68);
+    --line: rgba(251, 246, 238, 0.85);
+    --soft-line: rgba(251, 246, 238, 0.2);
+    --link: var(--riso-pink);
+    --label: rgba(251, 246, 238, 0.8);
+    --shadow: var(--riso-teal);
+    --card-shadow: #1A0D29;
+    --danger-bg: var(--paper);
+    --danger-text: var(--ink);
+    --vfd-bg: #1A0D29;
+    --vfd-text: var(--sunny-yellow);
+    --grain: 0.2;
+    color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    overflow-x: hidden;
+}
+a { color: var(--link); }
+code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; }
+code { font-size: 0.9em; }
+h1, h2, h3 { margin: 0; line-height: 1.2; }
+p { margin: 0 0 12px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- grain: decorative fills only, never behind text ---- */
+.grain { position: relative; isolation: isolate; }
+.grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: var(--grain);
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---- page frame ---- */
+.page { max-width: 1320px; margin: 0 auto; padding: 0 48px 64px; overflow-x: clip; }
+@media (max-width: 760px) { .page { padding: 0 16px 48px; } }
+
+.masthead {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 32px 0 24px;
+    flex-wrap: wrap;
+}
+.masthead .logo { width: 64px; height: 64px; flex: none; }
+.wordmark {
+    font-family: 'Shrikhand', 'Nunito', serif;
+    font-weight: 400;
+    font-size: 40px;
+    line-height: 1;
+    color: var(--text);
+    letter-spacing: 0.01em;
+}
+.masthead .tagline { color: var(--muted); font-size: 15px; margin-top: 6px; }
+.masthead .spacer { flex: 1; }
+.masthead .btn { background: var(--bg); }
+.blob {
+    position: absolute;
+    right: -40px;
+    top: -36px;
+    width: 180px;
+    height: 180px;
+    z-index: -1;
+    pointer-events: none;
+}
+@media (max-width: 760px) { .wordmark { font-size: 32px; } .blob { width: 120px; height: 120px; right: -36px; } }
+
+/* ---- tabs ---- */
+.tabs { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 24px; }
+.tab {
+    font: 700 16px/1 'Nunito', sans-serif;
+    min-height: 48px;
+    padding: 0 22px;
+    border-radius: 999px;
+    border: 2px solid var(--line);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+}
+.tab[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+:root[data-theme="dark"] .tab[aria-selected="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tab[aria-selected="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); } }
+
+/* ---- buttons ---- */
+.btn {
+    font: 700 16px/1.1 'Nunito', sans-serif;
+    min-height: 48px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    border: 2px solid var(--line);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: transform 160ms cubic-bezier(.34, 1.56, .64, 1), box-shadow 160ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.primary {
+    background: var(--riso-pink);
+    color: var(--ink);
+    border-color: var(--riso-pink);
+    box-shadow: 8px 8px 0 var(--shadow);
+    margin: 0 8px 8px 0;
+}
+.btn.primary:active:not(:disabled) { transform: translate(8px, 8px); box-shadow: 0 0 0 var(--shadow); }
+.btn.danger { background: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-bg); }
+.btn.link {
+    border: 0;
+    padding: 10px 4px;
+    color: var(--link);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    min-height: 48px;
+}
+.btn.small { min-height: 40px; padding: 6px 14px; font-size: 15px; }
+.btn svg { width: 20px; height: 20px; fill: currentColor; flex: none; }
+.btn:focus-visible, .tab:focus-visible, .row-btn:focus-visible, .file-item:focus-visible {
+    outline: 3px solid var(--riso-pink);
+    outline-offset: 3px;
+}
+.btns { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+/* ---- cards ---- */
+.card {
+    background: var(--surface);
+    border: 2px solid var(--line);
+    border-radius: 20px;
+    padding: 20px;
+}
+.card.raised { border-color: transparent; box-shadow: 10px 10px 0 var(--card-shadow); margin: 0 10px 10px 0; }
+.card + .card { margin-top: 24px; }
+.card h2 { font: 800 22px/1.2 'Nunito', sans-serif; margin-bottom: 12px; }
+.card h3 { font: 800 18px/1.25 'Nunito', sans-serif; margin-bottom: 8px; }
+.overline {
+    font: 600 12px/1.3 'Nunito', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--label);
+    margin-bottom: 8px;
+}
+.meta { color: var(--muted); font-size: 14px; }
+
+/* ---- badges ---- */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font: 600 13px/1 'Nunito', sans-serif;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--sunny-yellow);
+    color: var(--ink);
+    white-space: nowrap;
+}
+.badge.pink { background: var(--riso-pink); }
+.badge.paper { background: transparent; border: 2px solid var(--line); color: var(--text); padding: 3px 8px; }
+.badge.tilt { transform: rotate(-3deg); }
+
+/* ---- layout for the tables view ---- */
+.workspace { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 1000px) { .workspace { grid-template-columns: minmax(0, 1fr); } }
+.side { position: sticky; top: 16px; }
+@media (max-width: 1000px) { .side { position: static; } }
+
+.file-list { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow: auto; }
+@media (max-width: 1000px) { .file-list { max-height: 320px; } }
+.file-group { margin-top: 12px; }
+.file-group:first-child { margin-top: 0; }
+.file-group > .overline { margin: 0 0 4px; }
+.file-item {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 2px 10px;
+    align-items: center;
+    text-align: left;
+    background: transparent;
+    border: 2px solid transparent;
+    border-radius: 14px;
+    padding: 8px 10px;
+    min-height: 48px;
+    color: var(--text);
+    font: 400 15px/1.3 'Nunito', sans-serif;
+    cursor: pointer;
+}
+.file-item:hover { border-color: var(--soft-line); }
+.file-item[aria-current="true"] { border-color: var(--line); background: var(--bg); }
+.file-item .code { font: 700 12px/1 'Nunito', sans-serif; padding: 5px 4px; border-radius: 999px; background: var(--riso-pink); color: var(--ink); width: 76px; text-align: center; }
+.file-item .code.unknown { background: transparent; border: 2px solid var(--line); color: var(--text); padding: 3px 6px; }
+.file-item .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-item .desc { grid-column: 2; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-item .dirty { grid-row: 1 / span 2; grid-column: 3; font: 700 16px/1 'Nunito', sans-serif; color: var(--pink-ink); }
+:root[data-theme="dark"] .file-item .dirty { color: var(--riso-pink); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .file-item .dirty { color: var(--riso-pink); } }
+
+/* ---- speech bubbles ---- */
+.bubble {
+    position: relative;
+    padding: 12px 16px;
+    border-radius: 20px;
+    max-width: 560px;
+    margin-bottom: 28px;
+}
+.bubble::before {
+    content: "";
+    position: absolute;
+    bottom: -18px;
+    left: 36px;
+    width: 20%;
+    max-width: 64px;
+    height: 20px;
+    background: inherit;
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.bubble.right { margin-left: auto; }
+.bubble.right::before { left: auto; right: 36px; clip-path: polygon(0 0, 100% 0, 100% 100%); }
+.bubble.teal { background: var(--deep-teal); color: var(--paper); }
+.bubble.pink { background: var(--riso-pink); color: var(--ink); }
+.bubble.yellow { background: var(--sunny-yellow); color: var(--ink); }
+.bubble a { color: inherit; }
+.bubble p:last-child { margin-bottom: 0; }
+
+/* ---- forms ---- */
+.in, select.in, textarea.in {
+    font: 400 16px/1.3 'Nunito', sans-serif;
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 14px;
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper);
+    color: var(--ink);
+}
+.in::placeholder { color: rgba(59, 31, 92, 0.5); font-style: italic; }
+.in.mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; font-size: 15px; letter-spacing: 0.02em; }
+.in:focus, select.in:focus, textarea.in:focus {
+    outline: none;
+    border-color: var(--pink-ink);
+    box-shadow: 3px 3px 0 var(--riso-pink);
+}
+select.in { appearance: none; padding-right: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6' fill='none' stroke='%233B1F5C' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 18px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.contents { display: contents; }
+.flabel { font-weight: 700; font-size: 15px; line-height: 1.3; }
+.fhint { color: var(--muted); font-size: 13px; min-height: 1em; }
+.field.bad .in { border-color: var(--pink-ink); border-style: dashed; }
+.field.bad .fhint { color: var(--pink-ink); font-weight: 700; }
+:root[data-theme="dark"] .field.bad .fhint { color: var(--riso-pink); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .field.bad .fhint { color: var(--riso-pink); } }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px 20px; }
+.inline { display: flex; gap: 8px; align-items: center; }
+.inline > .in { flex: 1; min-width: 0; }
+.inline .sep { font-weight: 800; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+legend { padding: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 6px 14px 6px 10px;
+    border: 2px solid var(--soft-line);
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1.2;
+    user-select: none;
+}
+.chip:has(input:checked) { border-color: var(--line); background: var(--bg); }
+.chip input { width: 20px; height: 20px; accent-color: var(--riso-pink); margin: 0; flex: none; }
+.chip .bitno { font-size: 12px; color: var(--muted); }
+.check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.check input { width: 22px; height: 22px; accent-color: var(--riso-pink); margin: 0; }
+.section-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+.section-note { color: var(--muted); font-size: 14px; margin: -4px 0 16px; }
+.sections > .card { margin-top: 24px; }
+.sections > .card:first-child { margin-top: 0; }
+
+/* ---- editor header ---- */
+.ed-head { display: flex; gap: 16px 24px; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; }
+.ed-title { font: 800 26px/1.15 'Nunito', sans-serif; }
+.ed-path { font-size: 14px; color: var(--muted); word-break: break-all; }
+.notice { margin-top: 16px; padding: 12px 16px; border-radius: 16px; background: var(--sunny-yellow); color: var(--ink); }
+.notice.ink { background: var(--ink); color: var(--paper); }
+.notice p:last-child { margin: 0; }
+.subtabs { display: flex; gap: 8px; margin: 24px 0 16px; flex-wrap: wrap; }
+
+/* ---- list editor ---- */
+.list-tools { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 12px; }
+.list-tools .in { max-width: 280px; }
+.table-wrap { overflow: auto; max-height: 440px; border: 2px solid var(--line); border-radius: 16px; }
+table.grid { border-collapse: collapse; width: 100%; font-size: 15px; }
+table.grid th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    text-align: left;
+    font: 600 12px/1.3 'Nunito', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--label);
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--line);
+    white-space: nowrap;
+    z-index: 1;
+}
+table.grid td { padding: 8px 12px; border-bottom: 1px solid var(--soft-line); vertical-align: middle; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+table.grid tr:last-child td { border-bottom: 0; }
+.row-btn { cursor: pointer; }
+.row-btn:hover td { background: var(--bg); }
+.row-btn[aria-selected="true"] td { background: var(--sunny-yellow); color: var(--ink); }
+.row-btn.empty td { color: var(--muted); }
+.idx { font-weight: 800; }
+.entry-form { margin-top: 24px; }
+.entry-head { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+
+/* ---- VFD preview (ADMESS, prompts) ---- */
+.vfd {
+    display: inline-block;
+    background: var(--vfd-bg);
+    color: var(--vfd-text);
+    border-radius: 16px;
+    padding: 14px 18px;
+    font: 600 20px/1.3 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    letter-spacing: 0.08em;
+    white-space: pre;
+    max-width: 100%;
+    overflow: hidden;
+}
+.vfd .line { display: block; width: 20ch; overflow: hidden; }
+.vfd .fx-flash { animation: flash 1s steps(1) infinite; }
+.vfd .fx-scroll-in { animation: scroll-in 2.4s linear infinite; display: inline-block; }
+.vfd .fx-scroll-out { animation: scroll-out 2.4s linear infinite; display: inline-block; }
+@keyframes flash { 50% { opacity: 0; } }
+@keyframes scroll-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes scroll-out { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+.ruler { font: 12px/1.2 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); letter-spacing: 0.02em; white-space: pre; }
+
+.prompt-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px 20px; }
+.prompt-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; align-items: center; }
+.prompt-row .idx { text-align: right; color: var(--muted); font-size: 14px; }
+.prompt-row .in { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.04em; }
+
+/* ---- LCD / NPA grid ---- */
+.palette { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.swatch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 6px 14px 6px 6px;
+    border-radius: 999px;
+    border: 2px solid var(--soft-line);
+    background: transparent;
+    color: var(--text);
+    font: 600 15px/1.2 'Nunito', sans-serif;
+    cursor: pointer;
+}
+.swatch[aria-pressed="true"] { border-color: var(--line); box-shadow: 3px 3px 0 var(--riso-pink); }
+.swatch .chipv { width: 32px; height: 32px; border-radius: 10px; display: inline-grid; place-items: center; font: 800 14px/1 'Nunito', sans-serif; }
+.blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+.block h4 { margin: 0 0 6px; font: 800 15px/1.2 'Nunito', sans-serif; }
+.cells { display: grid; grid-template-columns: 44px repeat(10, minmax(0, 1fr)); gap: 3px; touch-action: pan-y; user-select: none; }
+.cells .rh, .cells .ch { font: 600 12px/1 'Nunito', sans-serif; color: var(--muted); display: grid; place-items: center; }
+.cells .rh { justify-content: end; padding-right: 4px; }
+.cell { height: 26px; border-radius: 7px; display: grid; place-items: center; font: 800 12px/1 'Nunito', sans-serif; cursor: crosshair; }
+.v-local { background: var(--deep-teal); color: var(--paper); }
+.v-intra { background: var(--sunny-yellow); color: var(--ink); }
+.v-inter { background: var(--riso-pink); color: var(--ink); }
+.v-lms { background: var(--paper); color: var(--deep-teal); box-shadow: inset 0 0 0 2px var(--deep-teal); }
+.v-invalid { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 2px var(--soft-line); }
+.v-other { background: var(--ink); color: var(--paper); }
+:root[data-theme="dark"] .v-other { background: var(--paper); color: var(--ink); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .v-other { background: var(--paper); color: var(--ink); } }
+.stats { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* ---- hex view ---- */
+.hex { font: 14px/1 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; overflow-x: auto; }
+.hex table { border-collapse: separate; border-spacing: 2px; }
+.hex th { font-weight: 600; color: var(--muted); padding: 2px 4px; font-size: 12px; }
+.hex td.off { color: var(--muted); padding-right: 8px; font-size: 13px; }
+.hex input {
+    width: 2.6ch;
+    padding: 6px 0;
+    text-align: center;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+}
+.hex input:hover { border-color: var(--soft-line); }
+.hex input:focus { outline: none; border-color: var(--pink-ink); background: var(--paper); color: var(--ink); }
+.hex input.changed { background: var(--sunny-yellow); color: var(--ink); }
+.hex td.ascii { padding-left: 12px; white-space: pre; color: var(--muted); }
+.hex-status { margin-top: 12px; min-height: 1.5em; font-size: 14px; }
+.pager { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+
+/* ---- empty state ---- */
+.empty { padding: 32px 8px; }
+.empty .booth { width: 150px; height: 150px; display: block; margin: 0 0 24px 24px; }
+
+/* ---- manager command ---- */
+.cmd {
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: 16px;
+    padding: 16px 18px;
+    font: 15px/1.6 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0 0 16px;
+}
+:root[data-theme="dark"] .cmd { background: #1A0D29; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .cmd { background: #1A0D29; } }
+.warn-list { margin: 0 0 16px; padding-left: 20px; }
+.warn-list li { margin-bottom: 4px; }
+.radio-row { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.two-col { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 1000px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
+.gen-list { list-style: none; padding: 0; margin: 0; }
+.gen-list li { padding: 10px 0; border-bottom: 1px solid var(--soft-line); }
+.gen-list li:last-child { border-bottom: 0; }
+
+/* ---- rom versions ---- */
+table.grid td.edit { padding: 4px 6px; }
+table.grid td.edit .in { min-height: 40px; padding: 6px 10px; border-radius: 10px; font-size: 15px; }
+table.grid td.edit.bad .in { border-color: var(--pink-ink); border-style: dashed; }
+
+/* ---- dialog ---- */
+dialog {
+    border: 0;
+    border-radius: 24px;
+    padding: 24px;
+    width: min(560px, calc(100vw - 32px));
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 12px 12px 0 var(--riso-teal);
+}
+dialog::backdrop { background: rgba(36, 18, 58, 0.55); }
+dialog h2 { font: 800 22px/1.2 'Nunito', sans-serif; margin-bottom: 12px; }
+dialog .fields { grid-template-columns: minmax(0, 1fr); }
+dialog .btns { margin-top: 20px; justify-content: flex-end; }
+
+/* ---- toasts ---- */
+.toasts { position: fixed; left: 16px; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; pointer-events: none; z-index: 25; }
+.toast { pointer-events: auto; max-width: 440px; margin-bottom: 18px; animation: pop 240ms cubic-bezier(.34, 1.56, .64, 1); transform-origin: 85% 100%; }
+@keyframes pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.wobble { animation: wobble 2.4s ease-in-out infinite; }
+@keyframes wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
+
+footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
+
+
+/* ---- hints ---- */
+.tip { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; padding: 10px 14px; border-radius: 16px; border: 2px dashed var(--soft-line); font-size: 15px; }
+.tip-icon { display: inline-flex; flex: none; margin-top: 1px; }
+.tip-icon svg { width: 22px; height: 22px; fill: var(--riso-teal); }
+.about { max-width: 760px; margin: 24px 0 32px; }
+.about ul { margin: 6px 0 0; padding-left: 20px; }
+.about li { margin-bottom: 2px; }
+body.no-hints .tip, body.no-hints .about { display: none; }
+.side .tip { margin: 0 0 12px; }
+
+/* ---- help ---- */
+.help-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 1000px) { .help-grid { grid-template-columns: minmax(0, 1fr); } }
+.help-nav ul { list-style: none; margin: 0; padding: 0; }
+.help-nav li a { display: flex; align-items: center; min-height: 44px; font-weight: 700; }
+.sections > section.card { margin-top: 24px; }
+.sections > section.card:first-child { margin-top: 0; }
+section.card h2 { margin-bottom: 16px; }
+section.card ul, section.card ol { padding-left: 22px; margin: 0 0 12px; }
+section.card li { margin-bottom: 6px; }
+ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+ol.steps li { position: relative; padding: 6px 0 0 56px; margin-bottom: 16px; min-height: 44px; }
+ol.steps li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute; left: 0; top: 0;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--riso-pink); color: var(--ink);
+    display: grid; place-items: center; font-weight: 800;
+}
+ol.steps.compact li { padding-left: 48px; margin-bottom: 10px; }
+ol.steps.compact li::before { width: 34px; height: 34px; }
+.guide details { border-bottom: 1px solid var(--soft-line); }
+.guide details:last-child { border-bottom: 0; }
+.guide summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 52px; font-weight: 700; }
+.guide summary .badge { min-width: 84px; justify-content: center; }
+.guide details[open] { padding-bottom: 12px; }
+.guide details p { margin: 4px 0 8px; }
+table.fw td { white-space: normal; max-width: none; vertical-align: top; padding-top: 12px; padding-bottom: 12px; }
+table.fw td.idx { white-space: nowrap; }
+.badge.gen { border-style: dashed; }
+.chip-btn { border: 0; cursor: pointer; min-height: 32px; }
+.chip-btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+dl.glossary { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 20px; margin: 0; }
+dl.glossary dt { font-weight: 800; }
+dl.glossary dd { margin: 0; }
+@media (max-width: 600px) { dl.glossary { grid-template-columns: minmax(0, 1fr); } dl.glossary dd { margin-bottom: 8px; } }
+.welcome p { margin-bottom: 14px; }
+
+/* ---- live tutorial ---- */
+.tour-ring {
+    position: fixed;
+    z-index: 20;
+    border-radius: 18px;
+    pointer-events: none;
+    box-shadow: 0 0 0 4px var(--riso-pink), 0 0 0 200vmax rgba(36, 18, 58, 0.42);
+    transition: left 220ms cubic-bezier(.34, 1.56, .64, 1), top 220ms cubic-bezier(.34, 1.56, .64, 1), width 220ms cubic-bezier(.34, 1.56, .64, 1), height 220ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.tour-ring.none { box-shadow: 0 0 0 200vmax rgba(36, 18, 58, 0.42); }
+.tour-card {
+    position: fixed;
+    z-index: 21;
+    width: min(400px, calc(100vw - 32px));
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 20px;
+    padding: 18px 20px 12px;
+    box-shadow: 10px 10px 0 var(--riso-teal);
+    animation: pop 240ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.tour-card h2 { font: 800 21px/1.2 'Nunito', sans-serif; margin: 0 0 8px; outline: none; }
+.tour-card p { margin: 0 0 10px; }
+.tour-card::before {
+    content: "";
+    position: absolute;
+    left: var(--tail-x, 32px);
+    width: 32px;
+    height: 18px;
+    background: var(--surface);
+}
+.tour-card[data-side="below"]::before { top: -17px; clip-path: polygon(0 100%, 100% 100%, 0 0); }
+.tour-card[data-side="above"]::before { bottom: -17px; clip-path: polygon(0 0, 100% 0, 0 100%); }
+.tour-card[data-side="none"]::before { display: none; }
+.tour-status { font-weight: 700; padding: 8px 12px; border-radius: 12px; background: var(--sunny-yellow); color: var(--ink); }
+.tour-status.done { background: var(--deep-teal); color: var(--paper); }
+.tour-card .btns { gap: 8px 12px; margin-top: 4px; }
+@media (max-width: 600px) {
+    .tour-card { left: 16px !important; right: 16px; top: auto !important; bottom: 16px; width: auto; }
+    .tour-card::before { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+    .toast { animation: fade 200ms linear; }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+}
+</style>
+</head>
+<body>
+<div class="page">
+    <header class="masthead">
+        <svg class="blob grain" viewBox="0 0 200 200" aria-hidden="true">
+            <path fill="var(--sunny-yellow)" d="M100 8c10 0 14 22 24 26s30-8 37 0-6 28-2 38 26 18 24 28-26 12-30 22 10 30 2 37-28-4-38 0-16 26-26 26-14-22-24-26-30 8-37 0 6-28 2-38-26-18-24-28 26-12 30-22-10-30-2-37 28 4 38 0 16-26 26-26z"/>
+        </svg>
+        <svg class="logo" viewBox="0 0 120 120" role="img" aria-label="mmumblephone icon">
+            <defs>
+                <filter id="logo-grain"><feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="table" tableValues="0 0.3"/></feComponentTransfer><feComposite operator="in" in2="SourceGraphic"/></filter>
+            </defs>
+            <g transform="rotate(-3 60 60)">
+                <rect x="20" y="20" width="90" height="90" rx="30" fill="#1B998B"/>
+                <rect x="10" y="10" width="90" height="90" rx="30" fill="#FF6FA8"/>
+                <rect x="10" y="10" width="90" height="90" rx="30" fill="#3B1F5C" filter="url(#logo-grain)" style="mix-blend-mode:multiply"/>
+                <path d="M30 32h50a10 10 0 0 1 10 10v24a10 10 0 0 1-10 10H54L40 88V76H30a10 10 0 0 1-10-10V42a10 10 0 0 1 10-10z" fill="#FBF6EE"/>
+                <path d="M33 60c0-9 10-15 22-15s22 6 22 15h-8c0-5-6-8-14-8s-14 3-14 8z" fill="#3B1F5C"/>
+                <rect x="29" y="57" width="15" height="9" rx="4.5" fill="#3B1F5C"/>
+                <rect x="66" y="57" width="15" height="9" rx="4.5" fill="#3B1F5C"/>
+            </g>
+        </svg>
+        <div>
+            <div class="wordmark">mmumblephone</div>
+            <div class="tagline">table editor · tune what your payphone hears from the manager</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="btns">
+            <button class="btn small" id="tour-btn" type="button">take the tour</button>
+            <button class="btn small" id="hints-btn" type="button" aria-pressed="true">hints: on</button>
+            <button class="btn small" id="theme-btn" type="button" aria-label="Colour theme">theme: auto</button>
+        </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab" role="tab" id="tab-tables" aria-controls="view-tables" aria-selected="true" data-view="tables">tables</button>
+        <button class="tab" role="tab" id="tab-manager" aria-controls="view-manager" aria-selected="false" data-view="manager">manager settings</button>
+        <button class="tab" role="tab" id="tab-roms" aria-controls="view-roms" aria-selected="false" data-view="roms">rom versions</button>
+        <button class="tab" role="tab" id="tab-help" aria-controls="view-help" aria-selected="false" data-view="help">help</button>
+    </nav>
+
+    <main>
+        <section id="view-tables" role="tabpanel" aria-labelledby="tab-tables">
+            <div class="workspace">
+                <aside class="side">
+                    <div class="card">
+                        <div class="overline">your tables</div>
+                        <div class="btns" style="margin-bottom:16px">
+                            <button class="btn primary" type="button" id="open-folder-btn">open folder</button>
+                            <button class="btn" type="button" id="open-files-btn">open files</button>
+                            <button class="btn" type="button" id="new-table-btn">new table</button>
+                        </div>
+                        <input type="file" id="file-input" accept=".bin" multiple hidden>
+                        <input type="file" id="dir-input" webkitdirectory multiple hidden>
+                        <div id="folder-info" class="meta" style="margin-bottom:12px"></div>
+                        <ul class="file-list" id="file-list" aria-label="Open tables"></ul>
+                        <div class="btns" style="margin-top:12px">
+                            <button class="btn small" type="button" id="save-all-btn" hidden>save all changes</button>
+                        </div>
+                    </div>
+                </aside>
+                <div id="editor" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <section id="view-manager" role="tabpanel" aria-labelledby="tab-manager" hidden></section>
+        <section id="view-roms" role="tabpanel" aria-labelledby="tab-roms" hidden></section>
+        <section id="view-help" role="tabpanel" aria-labelledby="tab-help" hidden></section>
+    </main>
+
+    <footer>
+        mmumblephone is a fork of <a href="https://github.com/hharte/mm_manager">mm_manager</a> by Howard M. Harte.
+        Table layouts follow <code>src/mm_manager.h</code>; page references are to the Millennium Database Design Report MSR 2.1.
+        Everything stays in your browser: files are only written when you press save.
+    </footer>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<div id="tour" hidden>
+    <div class="tour-ring"></div>
+    <div class="tour-card" role="dialog" aria-modal="false" aria-labelledby="tour-title"></div>
+</div>
+
+<dialog id="dialog"></dialog>
+
+<script>
+'use strict';
+
+/* =====================================================================
+ * Small helpers
+ * ===================================================================== */
+
+const $ = (sel, root = document) => root.querySelector(sel);
+
+function h(tag, props, ...kids) {
+    const el = document.createElement(tag);
+    if (props) {
+        for (const [k, v] of Object.entries(props)) {
+            if (v == null || v === false) continue;
+            if (k === 'class') el.className = v;
+            else if (k === 'text') el.textContent = v;
+            else if (k === 'html') el.innerHTML = v;
+            else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+            else if (typeof v !== 'string' && k in el) el[k] = v;
+            else el.setAttribute(k, v === true ? '' : v);
+        }
+    }
+    for (const kid of kids.flat(Infinity)) {
+        if (kid == null || kid === false) continue;
+        el.append(kid.nodeType ? kid : String(kid));
+    }
+    return el;
+}
+
+function selectEl(options, value, props = {}) {
+    const sel = h('select', { class: 'in', ...props });
+    let found = false;
+    for (const [v, label] of options) {
+        sel.append(h('option', { value: String(v) }, label));
+        if (String(v) === String(value)) found = true;
+    }
+    if (!found && value != null) {
+        sel.append(h('option', { value: String(value) }, `other (${value})`));
+    }
+    sel.value = String(value);
+    return sel;
+}
+
+const hex2 = n => n.toString(16).padStart(2, '0');
+const hexId = id => '0x' + hex2(id);
+const tableFileName = id => `mm_table_${hex2(id)}.bin`;
+const range = n => Array.from({ length: n }, (_, i) => i);
+let uidCounter = 0;
+const uid = () => 'u' + (++uidCounter);
+
+function rdN(b, o, w, be) {
+    let v = 0;
+    for (let i = 0; i < w; i++) v = v * 256 + b[o + (be ? i : w - 1 - i)];
+    return v;
+}
+function wrN(b, o, w, v, be) {
+    for (let i = 0; i < w; i++) {
+        const byte = Math.floor(v / 256 ** i) & 0xff;
+        b[o + (be ? w - 1 - i : i)] = byte;
+    }
+}
+
+function toast(message, kind = 'ok') {
+    const colour = kind === 'error' ? 'pink' : kind === 'info' ? 'yellow' : 'teal';
+    const t = h('div', { class: `bubble right toast ${colour}`, role: kind === 'error' ? 'alert' : 'status' }, message);
+    $('#toasts').append(t);
+    setTimeout(() => t.remove(), kind === 'error' ? 9000 : 4000);
+}
+
+function safeStorage(fn, fallback) {
+    try { return fn(window.localStorage); } catch (e) { return fallback; }
+}
+
+function download(name, data, type = 'application/octet-stream') {
+    const url = URL.createObjectURL(new Blob([data], { type }));
+    const a = h('a', { href: url, download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/* RFC 4180-ish CSV, good enough for the files in config/. */
+function parseCSV(text) {
+    const rows = [];
+    let row = [], field = '', i = 0, quoted = false;
+    text = text.replace(/^﻿/, '');
+    while (i < text.length) {
+        const c = text[i];
+        if (quoted) {
+            if (c === '"' && text[i + 1] === '"') { field += '"'; i += 2; continue; }
+            if (c === '"') { quoted = false; i++; continue; }
+            field += c; i++; continue;
+        }
+        if (c === '"' && field === '') { quoted = true; i++; continue; }
+        if (c === ',') { row.push(field); field = ''; i++; continue; }
+        if (c === '\r') { i++; continue; }
+        if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+        field += c; i++;
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows;
+}
+const csvCell = s => /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+
+/* =====================================================================
+ * Shared lookup tables (from src/mm_manager.h and src/mm_util.c)
+ * ===================================================================== */
+
+const CALL_TYPES = ['Incoming', 'Unanswered', 'Abandoned', 'Local', 'Intra-LATA', 'Inter-LATA', 'International',
+    'Operator', 'Zero+', '1-800', 'Directory assistance', 'Denied', 'Unassigned', 'Unassigned 2', 'e-Purse', 'Unknown'];
+const PMT_TYPES = ['Unused 0', 'Unused 1', 'No charge', 'Coin', 'Credit card', 'Calling card', 'Cash card', 'Inmate',
+    'Mondex', 'Visa stored value', 'Smart City', 'Proton', 'Undefined C', 'Undefined D', 'Undefined E', 'Undefined F'];
+const RATE_TYPES = ['Manager-rated intra-LATA', 'LMS rate (local)', 'Fixed charge (local)', 'Rate not available',
+    'Invalid NPA/NXX', 'Toll intra-LATA', 'Toll inter-LATA', 'Manager-rated inter-LATA', 'Manager-rated local', 'International'];
+const STD_CARD_TYPES = ['Undefined', 'MOD 10', 'ANSI', 'ABA', 'CBA', 'BOC', 'ANSI 59', 'CCITT', 'PIN off', 'Hello',
+    'Smart card', 'Reserved', 'SmartCity GPM416', 'Smart card PCOS', 'Smart card MPCOS', 'Proton'];
+const CARD_VFY_FLAGS = ['MOD 10 check', 'manager validation required', 'not a calling card', 'authorize right after card is withdrawn',
+    'positive service-code check', 'prompt for PIN', 'prompt for telco PIN', 'route to ACCS (off: to manager)'];
+const CARRIER_CB = ['carrier card: dial 101XXXX', 'use specific display prompt', 'accepts coin & cash cards',
+    'alternate bong tone timeout', 'alternate delay after bong', 'intra-LATA calls go to LEC',
+    'outdial order FGB#, card#, called#', 'feature group B'];
+const CARRIER_CB2 = ['FGB: prompt for number', 'strip prefix: 0- local', 'strip prefix: intra-LATA', 'strip prefix: inter-LATA',
+    'strip prefix: international', 'strip prefix: directory assistance', 'strip prefix: 1-800', 'spare'];
+const DEFAULT_CARRIERS = ['PIC inter-LATA', 'Coin inter-LATA', 'Credit card inter-LATA', 'PIC intra-LATA', 'Coin intra-LATA',
+    'Credit card intra-LATA', 'PIC local', 'Coin local', 'Credit card local'];
+const CS_FREE_FLAGS = ['free call (deny indicator)', 'answer supervision', 'keypad enabled', 'fail to POTS only',
+    'transmitter muted', 'timeout before dialing', 'coin only (deny card payment)', 'feature group B number'];
+const CS_IDENT2 = ['deny message delivery service', 'deny datajack', 'allow in restricted service', 'targeted CDR recording',
+    'prefix enable', 'emergency number', 'translation flag', 'reserved'];
+const CS_CLASSES = [[0x00, 'Disabled'], [0x01, 'Regular / free call'], [0x11, 'Unknown (0x11)'], [0x41, 'Information'], [0x81, 'Operator']];
+const ADMESS_EFFECTS = [[0, 'Permanent'], [1, 'Flashing (same)'], [2, 'Flashing (next)'], [3, 'Scroll in'], [4, 'Scroll out'],
+    [5, 'Scroll in, then out'], [17, 'New prompt'], [18, 'Flashing same, off'], [19, 'Flashing next, 2nd'],
+    [20, 'Flashing next, 1st off'], [21, 'Flashing next, 2nd off']];
+const ADMESS_BLANK_BEFORE = 0x40;
+const COIN_NAMES = ['CDN nickel', 'CDN nickel 2', 'CDN dime', 'CDN quarter', 'CDN dollar', 'US nickel', 'US dime', 'US quarter',
+    'US dollar', 'CDN steel nickel', 'CDN steel dime', 'CDN steel quarter', 'Coin 13', 'New CDN dollar', 'Coin 15', 'Coin 16'];
+const SC_REBATES = ['Intra-LATA rebate', 'International rebate', 'Local rebate', 'Inter-LATA rebate', 'Directory assistance rebate',
+    '1-800 rebate', 'Local (LMS) additional rebate', 'Intra-LATA additional rebate', 'Inter-LATA additional rebate',
+    'International additional rebate', 'Directory assistance additional rebate', '1-800 additional rebate',
+    'Datajack initial surcharge', 'Datajack additional surcharge'];
+const SC_MULT = [1, 5, 10, 25];
+const LIMSERV_LEVELS = [[0, 'No restriction'], [1, 'Emergency calls only'], [2, 'Deny coin & smart card calls'],
+    [3, 'No end-to-end signalling (coin & smart card)'], [4, 'Call screening & rep dialer list only']];
+const TERM_MODELS = { 0: 'invalid', 1: 'card only', 2: 'multipay', 3: 'coin basic', 4: 'inmate', 0x11: 'desk' };
+/* term_type_model[] and term_type_mtr[] from src/mm_util.c, index = terminal type 0..60 */
+const TERM_TYPE_MODEL = [0, 3, 3, 2, 2, 2, 2, 2, 4, 0x11, 2, 0x11, 1, 2, 2, 0x11, 4, 2, 3, 3, 2, 2, 2, 1, 2, 0x11, 2, 1, 2, 0x11,
+    2, 2, 1, 2, 2, 1, 2, 1, 3, 1, 2, 2, 3, 1, 2, 0x11, 2, 1, 2, 0x11, 1, 2, 1, 2, 1, 0x11, 3, 2, 1, 2, 2];
+const TERM_TYPE_MTR = [0, 2000, 2000, 2000, 0, 2000, 1090, 2000, 1060, 1060, 1130, 1070, 1080, 1070, 1070, 1070, 1070, 2000, 1200,
+    1070, 1200, 1070, 2000, 1070, 1070, 1070, 1070, 1090, 1090, 1090, 1090, 1090, 1080, 1090, 2000, 2000, 1130, 1130, 2000, 2000,
+    2000, 0, 1090, 1110, 1100, 1110, 1090, 1110, 1110, 1110, 2000, 2000, 2000, 2000, 2000, 1070, 2000, 2000, 1200, 2000, 2000];
+const mtrName = m => ({ 0: 'unknown', 1060: 'MTR 1.6', 1070: 'MTR 1.7', 1080: 'MTR 1.7 intl', 1090: 'MTR 1.9', 1100: 'MTR 1.10',
+    1110: 'MTR 1.11', 1130: 'MTR 1.13', 1200: 'MTR 1.20', 2000: 'MTR 2.x' })[m] || 'unknown';
+
+/* =====================================================================
+ * Field definitions
+ *
+ * A field is { key, label, kind, size, ... }.  layout() assigns each one
+ * its byte offset "o" relative to the start of the struct or list entry.
+ * ===================================================================== */
+
+const num = (key, label, size, x = {}) => ({ key, label, kind: 'num', size, ...x });
+const u8 = (k, l, x) => num(k, l, 1, x);
+const u16 = (k, l, x) => num(k, l, 2, x);
+const u32 = (k, l, x) => num(k, l, 4, x);
+const money16 = (k, l, x) => num(k, l, 2, { fmt: 'money', ...x });
+const money32 = (k, l, x) => num(k, l, 4, { fmt: 'money', ...x });
+const hexnum = (k, l, size, x) => num(k, l, size, { fmt: 'hex', ...x });
+const bytes = (key, label, size, x = {}) => ({ key, label, kind: 'bytes', size, ...x });
+const text = (key, label, size, x = {}) => ({ key, label, kind: 'text', size, ...x });
+const digits = (key, label, size, x = {}) => ({ key, label, kind: 'digits', size, ...x });
+const hexdigits = (key, label, size, x = {}) => ({ key, label, kind: 'hexdigits', size, ...x });
+const bits = (key, label, names, x = {}) => ({ key, label, kind: 'bits', size: names.length > 8 ? 2 : 1, names, ...x });
+const pick = (key, label, options, x = {}) => ({ key, label, kind: 'enum', size: 1,
+    options: options.map((o, i) => Array.isArray(o) ? o : [i, o]), ...x });
+const calltype = (key, label, x = {}) => ({ key, label, kind: 'calltype', size: 1, ...x });
+const hhmm = (key, label, x = {}) => ({ key, label, kind: 'hhmm', size: 2, ...x });
+const stamp = (key, label, x = {}) => ({ key, label, kind: 'stamp', size: 6, ...x });
+const period = (key, label, x = {}) => ({ key, label, kind: 'period', size: 2, ...x });
+const admattr = (key, label, x = {}) => ({ key, label, kind: 'admattr', size: 1, ...x });
+const multmax = (key, label, x = {}) => ({ key, label, kind: 'multmax', size: 2, ...x });
+const npa = (key, label, x = {}) => ({ key, label, kind: 'npa', size: 2, ...x });
+const group = (title, note) => ({ kind: 'group', label: title, note, size: 0 });
+const matrix = (key, label, rows, cols, x = {}) => ({ key, label, kind: 'matrix', rows, cols,
+    size: rows.length * cols.reduce((s, c) => s + c.size, 0), ...x });
+const union = (key, label, size, variants, x = {}) => ({ key, label, kind: 'union', size, variants, ...x });
+const rep = (n, fn) => range(n).map(fn);
+
+function layout(defs) {
+    let o = 0;
+    const fields = [];
+    for (const d of defs) {
+        const f = { ...d, o };
+        if (f.kind === 'union') {
+            f.variants = f.variants.map(v => ({ ...v, layout: layout(v.fields) }));
+        }
+        fields.push(f);
+        o += d.size || 0;
+    }
+    const map = {};
+    for (const f of fields) if (f.key) map[f.key] = f;
+    return { fields, size: o, map };
+}
+
+/* ---- decode helpers shared by controls and list summaries ---- */
+
+const PN_DIGITS = ['', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'B', 'C', 'D', 'E', 'F'];
+
+/* Call screening / repertory dialer numbers: one digit per nibble, 0xA = '0', a 0 nibble ends the number. */
+function readDigits(b, at, size) {
+    let s = '';
+    for (let i = 0; i < size * 2; i++) {
+        const n = (i % 2 === 0) ? b[at + (i >> 1)] >> 4 : b[at + (i >> 1)] & 0x0f;
+        if (n === 0) break;
+        s += PN_DIGITS[n];
+    }
+    return s;
+}
+function writeDigits(b, at, size, s) {
+    for (let i = 0; i < size; i++) b[at + i] = 0;
+    [...s].forEach((c, i) => {
+        const n = c === '0' ? 0xa : PN_DIGITS.indexOf(c.toUpperCase());
+        if (i % 2 === 0) b[at + (i >> 1)] = n << 4;
+        else b[at + (i >> 1)] |= n;
+    });
+}
+
+function readText(b, at, size) {
+    let s = '';
+    for (let i = 0; i < size; i++) s += String.fromCharCode(b[at + i]);
+    return s.replace(/\0+$/, '');
+}
+function writeText(b, at, size, s, pad = 0x20) {
+    for (let i = 0; i < size; i++) b[at + i] = i < s.length ? (s.charCodeAt(i) & 0xff) : pad;
+}
+const vfdSafe = s => s.replace(/[\x00-\x1f\x7f-\xff]/g, '·');
+
+function readNpa(b, at) {
+    const d = [b[at] >> 4, b[at] & 15, b[at + 1] >> 4];
+    const ok = d.every(x => x <= 9) && (b[at + 1] & 15) === 0xe;
+    return { value: d.map(x => x <= 9 ? x : '?').join(''), ok };
+}
+
+function fieldText(f, b, at) {
+    switch (f.kind) {
+    case 'num': {
+        const v = rdN(b, at, f.size, f.be);
+        if (f.fmt === 'money') return '$' + (v / 100).toFixed(2);
+        if (f.fmt === 'hex') return v.toString(16).padStart(f.size * 2, '0');
+        if (f.unit === 'cs') return `${(v / 100).toFixed(2)} s`;
+        return String(v);
+    }
+    case 'enum': {
+        const v = b[at];
+        const o = f.options.find(([ov]) => ov === v);
+        return o ? o[1] : `other (${v})`;
+    }
+    case 'bits': {
+        const v = rdN(b, at, f.size);
+        const on = f.names.filter((_, i) => v & (1 << i));
+        return on.length ? on.join(', ') : '—';
+    }
+    case 'text': return vfdSafe(readText(b, at, f.size)).trimEnd();
+    case 'digits': return readDigits(b, at, f.size);
+    case 'hexdigits':
+    case 'bytes': return Array.from(b.subarray(at, at + f.size), hex2).join(f.kind === 'bytes' ? ' ' : '');
+    case 'calltype': return `${CALL_TYPES[b[at] & 15]} · ${PMT_TYPES[b[at] >> 4]}`;
+    case 'hhmm': return `${String(b[at]).padStart(2, '0')}:${String(b[at + 1]).padStart(2, '0')}`;
+    case 'stamp': return stampText(b, at);
+    case 'period': {
+        const v = rdN(b, at, 2);
+        return (v & 0x8000) ? 'unlimited' : `${v} s`;
+    }
+    case 'admattr': {
+        const v = b[at];
+        const o = ADMESS_EFFECTS.find(([ov]) => ov === (v & ~ADMESS_BLANK_BEFORE));
+        return (o ? o[1] : `effect ${v & ~ADMESS_BLANK_BEFORE}`) + ((v & ADMESS_BLANK_BEFORE) ? ', blank first' : '');
+    }
+    case 'multmax': {
+        const v = rdN(b, at, 2, true);
+        return `×${SC_MULT[v & 3]}, max ${v >> 2}`;
+    }
+    case 'npa': return readNpa(b, at).value;
+    default: return '';
+    }
+}
+
+function stampText(b, at) {
+    const p = n => String(n).padStart(2, '0');
+    return `${1900 + b[at]}-${p(b[at + 1])}-${p(b[at + 2])} ${p(b[at + 3])}:${p(b[at + 4])}:${p(b[at + 5])}`;
+}
+
+function unitHint(f, v) {
+    switch (f.unit) {
+    case 'cs': return `${v} × 10 ms = ${(v / 100).toFixed(2)} s`;
+    case 's': return `${v} s`;
+    case 'min': return `${v} min`;
+    case 'days': return `${v} days`;
+    case 'cents': return `${v} cents`;
+    default: return '';
+    }
+}
+
+/* =====================================================================
+ * Field controls
+ * ===================================================================== */
+
+/*
+ * Render one field as a form control bound to bytes b at base offset.
+ * ctx.changed() is called after every write, ctx.rerender() for fields
+ * that change the shape of the form (e.g. the card type).
+ */
+function fieldEl(f, b, base, ctx) {
+    const at = base + f.o;
+    const id = uid();
+    const hint = h('div', { class: 'fhint', id: id + '-hint' });
+    const isSet = f.kind === 'bits' || f.kind === 'matrix';
+    const wrap = h(isSet ? 'fieldset' : 'div', { class: 'field' + (f.wide || isSet || f.kind === 'union' ? ' wide' : ''), 'data-key': f.key || null });
+    const say = (msg, bad = false) => {
+        wrap.classList.toggle('bad', bad);
+        hint.textContent = [msg, bad ? '' : f.note].filter(Boolean).join(' · ');
+    };
+    const done = () => { ctx.changed(); if (f.rerender) ctx.rerender(); };
+    const control = CONTROLS[f.kind](f, b, at, { id, say, done, ctx, base });
+    wrap.append(isSet ? h('legend', { class: 'flabel' }, f.label) : h('label', { class: 'flabel', for: id }, f.label));
+    wrap.append(control, hint);
+    if (!hint.textContent && f.note) hint.textContent = f.note;
+    return wrap;
+}
+
+function numberInput(f, b, at, { id, say, done }, small = false) {
+    const max = f.max ?? (256 ** f.size - 1);
+    const min = f.min ?? 0;
+    const isHex = f.fmt === 'hex', isMoney = f.fmt === 'money';
+    const show = v => isMoney ? (v / 100).toFixed(2) : isHex ? v.toString(16).padStart(f.size * 2, '0') : String(v);
+    const describe = v => isMoney ? `${v} cents` : unitHint(f, v);
+    const v0 = rdN(b, at, f.size, f.be);
+    const inp = h('input', {
+        id, class: 'in' + (isHex ? ' mono' : ''), type: isHex ? 'text' : 'number',
+        inputmode: isHex ? 'text' : 'decimal', step: isMoney ? '0.01' : '1', min: isHex ? null : String(isMoney ? min / 100 : min),
+        max: isHex ? null : String(isMoney ? max / 100 : max), spellcheck: 'false', autocomplete: 'off',
+        'aria-describedby': id + '-hint',
+    });
+    inp.value = show(v0);
+    if (!small) say(describe(v0));
+    inp.addEventListener('input', () => {
+        const s = inp.value.trim();
+        let v = NaN;
+        if (isMoney) { if (/^\d+(\.\d{0,2})?$/.test(s)) v = Math.round(parseFloat(s) * 100); }
+        else if (isHex) { if (/^[0-9a-f]+$/i.test(s)) v = parseInt(s, 16); }
+        else if (/^\d+$/.test(s)) v = parseInt(s, 10);
+        if (!Number.isFinite(v) || v < min || v > max) {
+            const shown = isMoney ? `$${(min / 100).toFixed(2)}–$${(max / 100).toFixed(2)}` : isHex ? `${f.size * 2} hex digits` : `${min}–${max}`;
+            say(`enter ${shown}`, true);
+            return;
+        }
+        wrN(b, at, f.size, v, f.be);
+        say(small ? '' : describe(v));
+        done();
+    });
+    return inp;
+}
+
+const CONTROLS = {
+    num: (f, b, at, c) => numberInput(f, b, at, c),
+
+    enum(f, b, at, { id, done }) {
+        const sel = selectEl(f.options, b[at], { id });
+        sel.addEventListener('change', () => { b[at] = parseInt(sel.value, 10); done(); });
+        return sel;
+    },
+
+    bits(f, b, at, { done }) {
+        const v = rdN(b, at, f.size);
+        return h('div', { class: 'chips' }, f.names.map((name, i) => {
+            const cb = h('input', { type: 'checkbox', checked: !!(v & (1 << i)) });
+            cb.addEventListener('change', () => {
+                let cur = rdN(b, at, f.size);
+                cur = cb.checked ? (cur | (1 << i)) : (cur & ~(1 << i));
+                wrN(b, at, f.size, cur >>> 0);
+                done();
+            });
+            return h('label', { class: 'chip' }, cb, h('span', null, name), h('span', { class: 'bitno' }, `bit ${i}`));
+        }));
+    },
+
+    text(f, b, at, { id, say, done }) {
+        const raw = readText(b, at, f.size);
+        /* Unused entries are NUL-filled, used ones space-padded: keep whichever this field had. */
+        const pad = b[at + f.size - 1] === 0 ? 0 : 0x20;
+        const inp = h('input', { id, class: 'in mono', maxlength: String(f.size), spellcheck: 'false', autocomplete: 'off',
+            style: `max-width:${f.size + 4}ch` });
+        inp.value = raw;
+        const count = s => `${s.length} / ${f.size} characters`;
+        say(/[\x00-\x1f\x7f-\xff]/.test(raw) ? 'contains non-printing bytes; they are kept unless you edit this field' : count(raw));
+        inp.addEventListener('input', () => { writeText(b, at, f.size, inp.value, inp.value ? 0x20 : pad); say(count(inp.value)); done(); });
+        return inp;
+    },
+
+    digits(f, b, at, { id, say, done }) {
+        const inp = h('input', { id, class: 'in mono', maxlength: String(f.size * 2), inputmode: 'tel', spellcheck: 'false', autocomplete: 'off' });
+        inp.value = readDigits(b, at, f.size);
+        say(`up to ${f.size * 2} digits`);
+        inp.addEventListener('input', () => {
+            const s = inp.value.trim();
+            if (!/^[0-9B-Fb-f]*$/.test(s)) { say('digits 0–9 only (B–F are special codes)', true); return; }
+            writeDigits(b, at, f.size, s);
+            say(`up to ${f.size * 2} digits`);
+            done();
+        });
+        return inp;
+    },
+
+    hexdigits(f, b, at, { id, say, done }) {
+        const inp = h('input', { id, class: 'in mono', maxlength: String(f.size * 2), spellcheck: 'false', autocomplete: 'off' });
+        inp.value = fieldText(f, b, at);
+        inp.addEventListener('input', () => {
+            const s = inp.value.trim();
+            if (!new RegExp(`^[0-9a-f]{${f.size * 2}}$`, 'i').test(s)) { say(`exactly ${f.size * 2} hex digits`, true); return; }
+            for (let i = 0; i < f.size; i++) b[at + i] = parseInt(s.substr(i * 2, 2), 16);
+            say('');
+            done();
+        });
+        return inp;
+    },
+
+    bytes(f, b, at, { id, say, done }) {
+        const inp = h('input', { id, class: 'in mono', spellcheck: 'false', autocomplete: 'off' });
+        inp.value = fieldText(f, b, at);
+        say(`${f.size} bytes, hex`);
+        inp.addEventListener('input', () => {
+            const parts = inp.value.trim().split(/[\s,]+/).filter(Boolean);
+            const compact = parts.length === 1 && parts[0].length === f.size * 2 ? parts[0].match(/../g) : parts;
+            if (compact.length !== f.size || !compact.every(p => /^[0-9a-f]{1,2}$/i.test(p))) {
+                say(`exactly ${f.size} bytes in hex, e.g. "${'00 '.repeat(Math.min(f.size, 4)).trim()}"`, true);
+                return;
+            }
+            compact.forEach((p, i) => { b[at + i] = parseInt(p, 16); });
+            say(`${f.size} bytes, hex`);
+            done();
+        });
+        return inp;
+    },
+
+    calltype(f, b, at, { id, done }) {
+        const ct = selectEl(CALL_TYPES.map((n, i) => [i, n]), b[at] & 15, { id, 'aria-label': f.label + ': call type' });
+        const pt = selectEl(PMT_TYPES.map((n, i) => [i, n]), b[at] >> 4, { 'aria-label': f.label + ': payment type' });
+        const upd = () => { b[at] = (parseInt(pt.value, 10) << 4) | parseInt(ct.value, 10); done(); };
+        ct.addEventListener('change', upd);
+        pt.addEventListener('change', upd);
+        return h('div', { class: 'inline' }, ct, pt);
+    },
+
+    hhmm(f, b, at, { id, say, done }) {
+        const mk = (i, max, label) => {
+            const inp = h('input', { class: 'in', type: 'number', min: '0', max: String(max), inputmode: 'numeric', 'aria-label': `${f.label} ${label}` });
+            if (i === 0) inp.id = id;
+            inp.value = String(b[at + i]);
+            inp.addEventListener('input', () => {
+                const v = parseInt(inp.value, 10);
+                if (!/^\d+$/.test(inp.value) || v > max) { say(`${label} must be 0–${max}`, true); return; }
+                b[at + i] = v;
+                say('24-hour time, terminal local time');
+                done();
+            });
+            return inp;
+        };
+        say('24-hour time, terminal local time');
+        return h('div', { class: 'inline' }, mk(0, 23, 'hours'), h('span', { class: 'sep' }, ':'), mk(1, 59, 'minutes'));
+    },
+
+    stamp(f, b, at, { id, say, done }) {
+        const inp = h('input', { id, class: 'in mono', placeholder: 'YYYY-MM-DD HH:MM:SS', spellcheck: 'false' });
+        inp.value = stampText(b, at);
+        inp.addEventListener('input', () => {
+            const m = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{1,2}):(\d{1,2})$/.exec(inp.value.trim());
+            const p = m ? m.slice(1).map(Number) : null;
+            if (!p || p[0] < 1900 || p[0] > 2155 || p[1] < 1 || p[1] > 12 || p[2] < 1 || p[2] > 31 || p[3] > 23 || p[4] > 59 || p[5] > 59) {
+                say('use YYYY-MM-DD HH:MM:SS (years 1900–2155)', true);
+                return;
+            }
+            b[at] = p[0] - 1900;
+            for (let i = 1; i < 6; i++) b[at + i] = p[i];
+            say('');
+            done();
+        });
+        return inp;
+    },
+
+    period(f, b, at, { id, say, done }) {
+        const v = rdN(b, at, 2);
+        const inp = h('input', { id, class: 'in', type: 'number', min: '0', max: '32767', inputmode: 'numeric' });
+        inp.value = String(v & 0x7fff);
+        const unl = h('input', { type: 'checkbox', checked: !!(v & 0x8000) });
+        const write = () => {
+            const n = parseInt(inp.value, 10);
+            if (!/^\d+$/.test(inp.value) || n > 32767) { say('0–32767 seconds', true); return; }
+            wrN(b, at, 2, (unl.checked ? 0x8000 : 0) | n);
+            say('seconds');
+            done();
+        };
+        say('seconds');
+        inp.addEventListener('input', write);
+        unl.addEventListener('change', write);
+        return h('div', { class: 'inline' }, inp, h('label', { class: 'check' }, unl, 'unlimited'));
+    },
+
+    admattr(f, b, at, { id, done }) {
+        const v = b[at];
+        const sel = selectEl(ADMESS_EFFECTS, v & ~ADMESS_BLANK_BEFORE, { id, style: 'min-width:12em' });
+        const blank = h('input', { type: 'checkbox', checked: !!(v & ADMESS_BLANK_BEFORE) });
+        const upd = () => { b[at] = parseInt(sel.value, 10) | (blank.checked ? ADMESS_BLANK_BEFORE : 0); done(); };
+        sel.addEventListener('change', upd);
+        blank.addEventListener('change', upd);
+        return h('div', { class: 'inline', style: 'flex-wrap:wrap' }, sel, h('label', { class: 'check' }, blank, 'blank before'));
+    },
+
+    multmax(f, b, at, { id, say, done }) {
+        const v = rdN(b, at, 2, true);
+        const sel = selectEl(SC_MULT.map((m, i) => [i, `×${m}`]), v & 3, { id, 'aria-label': f.label + ' multiplier', style: 'max-width:7.5em' });
+        const inp = h('input', { class: 'in', type: 'number', min: '0', max: '16383', 'aria-label': f.label + ' maximum units' });
+        inp.value = String(v >> 2);
+        const upd = () => {
+            const n = parseInt(inp.value, 10);
+            if (!/^\d+$/.test(inp.value) || n > 16383) { say('max units 0–16383', true); return; }
+            wrN(b, at, 2, (n << 2) | parseInt(sel.value, 10), true);
+            say('multiplier, maximum units');
+            done();
+        };
+        say('multiplier, maximum units');
+        sel.addEventListener('change', upd);
+        inp.addEventListener('input', upd);
+        return h('div', { class: 'inline' }, sel, inp);
+    },
+
+    npa(f, b, at, { id, say, done }) {
+        const cur = readNpa(b, at);
+        const inp = h('input', { id, class: 'in', inputmode: 'numeric', maxlength: '3', style: 'max-width:8em' });
+        inp.value = cur.value;
+        say(cur.ok ? '3-digit area code' : 'stored area code is not valid BCD yet', !cur.ok);
+        inp.addEventListener('input', () => {
+            const s = inp.value.trim();
+            if (!/^[2-9]\d\d$/.test(s)) { say('a 3-digit area code, 200–999', true); return; }
+            b[at] = (+s[0] << 4) | +s[1];
+            b[at + 1] = (+s[2] << 4) | 0xe;
+            say('3-digit area code');
+            done();
+        });
+        return inp;
+    },
+
+    matrix(f, b, at, { ctx }) {
+        let colBase = at;
+        const cols = f.cols.map(c => { const r = { ...c, base: colBase }; colBase += c.size * f.rows.length; return r; });
+        const table = h('table', { class: 'grid' },
+            h('thead', null, h('tr', null, h('th', null, f.rowLabel || '#'), cols.map(c => h('th', null, c.label)))),
+            h('tbody', null, f.rows.map((rowName, r) => h('tr', null,
+                h('td', { class: 'idx' }, rowName),
+                cols.map(c => {
+                    const cell = h('td', { class: 'edit' });
+                    const cf = { ...c, label: `${rowName} ${c.label}`, o: 0 };
+                    const say = (msg, bad) => { cell.classList.toggle('bad', !!bad); cell.title = msg || ''; };
+                    cell.append(numberInput(cf, b, c.base + r * c.size, { id: uid(), say, done: () => ctx.changed() }, true));
+                    return cell;
+                })))));
+        return h('div', { class: 'table-wrap', style: 'max-height:none' }, table);
+    },
+
+    union(f, b, at, { ctx, base }) {
+        const v = f.variants.find(x => x.when(b, base)) || f.variants[f.variants.length - 1];
+        return h('div', { class: 'card', style: 'padding:16px' },
+            h('div', { class: 'overline' }, v.title),
+            renderFieldGrid(v.layout.fields, b, at, ctx));
+    },
+};
+
+function renderFieldGrid(fields, b, base, ctx) {
+    return h('div', { class: 'fields' }, fields.filter(f => f.kind !== 'group').map(f => fieldEl(f, b, base, ctx)));
+}
+
+/* Split fields into cards at each group() marker. */
+function renderSections(fields, b, base, ctx) {
+    const out = [];
+    let cur = null;
+    for (const f of fields) {
+        if (f.kind === 'group' || !cur) {
+            cur = { title: f.kind === 'group' ? f.label : null, note: f.kind === 'group' ? f.note : null, fields: [] };
+            out.push(cur);
+            if (f.kind === 'group') continue;
+        }
+        cur.fields.push(f);
+    }
+    return h('div', { class: 'sections' }, out.filter(s => s.fields.length).map(s => h('div', { class: 'card' },
+        s.title && h('h3', null, s.title),
+        s.note && h('p', { class: 'section-note' }, s.note),
+        renderFieldGrid(s.fields, b, base, ctx))));
+}
+
+/* =====================================================================
+ * Table definitions
+ * ===================================================================== */
+
+const FEATRU = layout([
+    group('Terminal'),
+    pick('term_type', 'Terminal type', ['Invalid', 'Card only', 'Universal (multipay)', 'Coin', 'Inmate'],
+        { note: 'mm_manager overwrites this with the model the terminal reports' }),
+    pick('display_present', 'Display present', ['No', 'Yes'], { note: 'if no, turn advertising off' }),
+    u8('num_of_languages', 'Number of languages'),
+    u8('default_language', 'Default language'),
+    u8('lang_scroll_order', 'Language scroll order'),
+    u8('lang_scroll_order2', 'Language scroll order 2'),
+    bits('OOS_POTS_flags', 'Miscellaneous', ['stay in service when CDR list is full', 'display initial rate',
+        'smart card alert beats incoming call', 'alert on zero-value cash card', 'revert to primary NCC at call-in',
+        'block carriers without a rate (MTR 2.x)', 'rated credit card CDRs', 'force 11-digit local dialing (MTR 2.x)']),
+    group('Cards and validation'),
+    u8('num_call_follows', 'Follow-on calls per card'),
+    u8('next_call_revalidation_frequency', 'Follow-on calls before revalidation'),
+    bits('card_val_info', 'Card validation', ['validate cards on local calls', 'delayed card authorization',
+        'validate MCE local calls', 'no NPA added on 0+ local ACCS', 'card auth bit 4', 'card auth bit 5', 'card auth bit 6',
+        'validate MCE card immediately']),
+    bits('accs_mode_info', 'ACCS mode', ['ACCS available', 'MCE routed to ACCS (off: manager)', 'buffer manually dialed card digits',
+        'manager validates manual card numbers', 'automated operator services (AOS)', '0+ local: strip leading 0/1 (off: 0→1)',
+        'reserved bit 6', 'remove NPA on 0+ local NCC calls']),
+    u8('min_num_digits_manual_card_entry', 'Min digits, manual card entry'),
+    u8('max_num_digits_manual_card_entry', 'Max digits, manual card entry'),
+    u8('ppu_preauth_credit_limit', 'Pre-auth credit limit (spare K)'),
+    pick('default_rate_req_payment_type', 'Default rate request payment type', PMT_TYPES),
+    bits('smartcard_flags', 'Smart cards', ['reserved bit 0', 'valid for international', 'valid for inter-LATA',
+        'valid for intra-LATA', 'valid for local', 'second rate request after payment', 'use terminal card table defaults',
+        'don\'t display rate info']),
+    u8('max_num_smartcard_inserts', 'Max smart card inserts per call'),
+    u8('max_num_diff_smartcard_inserts', 'Max different smart cards per call'),
+    group('Incoming calls'),
+    pick('incoming_call_mode', 'Incoming call mode', ['No ringing, no data answer', 'Ring, answer voice only',
+        'No ringing, answer as data at once', 'Ring, answer data after N rings']),
+    u8('anti_fraud_for_incoming_call', 'Anti-fraud for incoming calls'),
+    group('Rating and dialing'),
+    bits('rating_flags', 'Rating', ['NPA set-based rating', 'international set-based rating', 'dial-around timer',
+        'show initial + additional rate', 'round up charge', '7-digit no wait', 'rating bit 6', 'rating bit 7']),
+    u8('dialaround_timer', 'Dial-around timer', { note: 'hold # this long for dial tone; 0 = off' }),
+    u8('international_min_digits', 'Min international digits', { note: 'not counting 01 / 011' }),
+    u8('dtmf_duration', 'DTMF duration'),
+    u8('interdigit_pause', 'Inter-digit pause'),
+    bits('call_setup_param_flags', 'Call setup', ['display called number', 'flash degraded-service prompts', 'reserved bit 2',
+        'reserved bit 3', 'reserved bit 4', 'reserved bit 5', 'reserved bit 6', 'suppress "calling" prompt']),
+    bits('carrier_reroute_flags', 'Invalid carrier: reroute (off: block)', ['coin calls', 'credit card calls', 'smart card calls',
+        'calling card calls', 'reserved bit 4', 'reserved bit 5', 'reserved bit 6', 'reserved bit 7']),
+    u8('cutoff_on_disc_duration', 'C.O. line break before disconnect', { unit: 'cs' }),
+    group('Call screening list pointers', 'Entry numbers in the call screening list (0x5c / 0x3b / 0x18).'),
+    u8('call_screen_list_ixl_oper_entry', 'International operator'),
+    u8('call_screen_list_inter_lata_aos_entry', 'Inter-LATA AOS'),
+    u8('call_screen_list_ixl_aos_entry', 'International AOS'),
+    u8('call_screen_list_intra_lata_oper_entry', 'Intra-LATA operator'),
+    u8('call_screen_list_inter_lata_oper_entry', 'Inter-LATA operator'),
+    u8('call_screen_list_zp_aos_entry', '0+ AOS'),
+    u8('call_screen_list_zm_aos_entry', '0- AOS'),
+    u8('operator_collection_timer', 'Operator collection timer'),
+    group('Advertising'),
+    bits('advertising_flags', 'Advertising', ['advertising enabled', 'rep dialer advertising', 'call established advertising',
+        'date / time display', '12-hour clock (off: 24-hour)', 'reserved bit 5', 'reserved bit 6', 'reserved bit 7']),
+    group('Coin calls'),
+    bits('coin_calling_features', 'Coin calling', ['overtime period', 'voice feedback', 'second warning', 'reserved bit 3',
+        'reserved bit 4', 'reserved bit 5', 'reserved bit 6', 'reserved bit 7']),
+    u16('coin_call_overtime_period', 'Coin call overtime period', { note: 'grace time to add coins after the paid time runs out' }),
+    u16('coin_call_pots_time', 'Coin call fail-to-POTS time'),
+    group('Datajack'),
+    bits('datajack_flags', 'Datajack', ['datajack enabled', 'mute handset after dialing', 'local datajack calls are free',
+        'allow directory assistance', 'reserved bit 4', 'reserved bit 5', 'reserved bit 6', 'reserved bit 7']),
+    u8('datajack_display_delay', 'Datajack prompt delay', { unit: 's' }),
+    u8('datajack_grace_period', 'Datajack grace period'),
+    group('Uploads and alarms'),
+    u16('cdr_upload_timer_international', 'International CDR upload timer'),
+    u16('cdr_upload_timer_domestic', 'Domestic CDR upload timer'),
+    u8('num_perf_stat_dialog_fails', 'Dialog failures before perf stats are sent'),
+    u8('num_co_line_check_fails', 'C.O. line check failures'),
+    u8('num_alt_ncc_dialog_check_fails', 'Failures before trying the secondary NCC'),
+    u8('num_failed_dialogs_until_oos', 'Failed dialogs until out of service'),
+    u8('num_failed_dialogs_until_alarm', 'Failed dialogs until alarm'),
+    u16('delay_on_hook_card_alarm', 'On-hook card alarm delay'),
+    u16('delay_on_hook_card_alarm_after_call', 'On-hook card alarm delay after call'),
+    u16('duration_of_card_alarm', 'Card alarm duration'),
+    u16('card_alarm_on_cadence', 'Card alarm on cadence'),
+    u16('card_alarm_off_cadence', 'Card alarm off cadence'),
+    u16('card_reader_blocked_alarm_delay', 'Card reader blocked alarm delay'),
+    group('Answer supervision (IAS)'),
+    u8('settlement_time', 'Settle time before answer supervision'),
+    u8('grace_period_domestic', 'Domestic grace period'),
+    u8('ias_timeout', 'IAS timeout'),
+    u8('grace_period_international', 'International grace period'),
+    u8('settlement_time_datajack_calls', 'Datajack settle time'),
+]);
+/* FEATRU fields are listed by topic above; put them back in table order. */
+const FEATRU_ORDER = ['term_type', 'display_present', 'num_call_follows', 'card_val_info', 'accs_mode_info', 'incoming_call_mode',
+    'anti_fraud_for_incoming_call', 'OOS_POTS_flags', 'datajack_display_delay', 'lang_scroll_order', 'lang_scroll_order2',
+    'num_of_languages', 'rating_flags', 'dialaround_timer', 'call_screen_list_ixl_oper_entry', 'call_screen_list_inter_lata_aos_entry',
+    'call_screen_list_ixl_aos_entry', 'datajack_grace_period', 'operator_collection_timer', 'call_screen_list_intra_lata_oper_entry',
+    'call_screen_list_inter_lata_oper_entry', 'advertising_flags', 'default_language', 'call_setup_param_flags', 'dtmf_duration',
+    'interdigit_pause', 'ppu_preauth_credit_limit', 'coin_calling_features', 'coin_call_overtime_period', 'coin_call_pots_time',
+    'international_min_digits', 'default_rate_req_payment_type', 'next_call_revalidation_frequency', 'cutoff_on_disc_duration',
+    'cdr_upload_timer_international', 'cdr_upload_timer_domestic', 'num_perf_stat_dialog_fails', 'num_co_line_check_fails',
+    'num_alt_ncc_dialog_check_fails', 'num_failed_dialogs_until_oos', 'num_failed_dialogs_until_alarm', 'smartcard_flags',
+    'max_num_digits_manual_card_entry', 'call_screen_list_zp_aos_entry', 'carrier_reroute_flags', 'min_num_digits_manual_card_entry',
+    'max_num_smartcard_inserts', 'max_num_diff_smartcard_inserts', 'call_screen_list_zm_aos_entry', 'datajack_flags',
+    'delay_on_hook_card_alarm', 'delay_on_hook_card_alarm_after_call', 'duration_of_card_alarm', 'card_alarm_on_cadence',
+    'card_alarm_off_cadence', 'card_reader_blocked_alarm_delay', 'settlement_time', 'grace_period_domestic', 'ias_timeout',
+    'grace_period_international', 'settlement_time_datajack_calls'];
+(function placeByOrder(l, order) {
+    /* Offsets follow the C struct order, while the form keeps the topic order. */
+    let o = 0;
+    for (const key of order) { const f = l.map[key]; f.o = o; o += f.size; }
+    l.size = o;
+})(FEATRU, FEATRU_ORDER);
+
+const USER_IF_DEFAULTS = { digit_clear_delay: 450, transient_delay: 450, transient_hint_time: 450, visual_to_voice_delay: 450,
+    voice_repitition_delay: 450, no_action_timeout: 3000, card_validation_timeout: 4500, dj_second_string_dtmf_timeout: 300,
+    spare_timer_b: 1100, cp_input_timeout: 100, language_timeout: 1000, cfs_timeout: 200, called_party_disconnect: 1200,
+    no_voice_prompt_reps: 3, accs_digit_timeout: 450, collect_call_timeout: 400, bong_tone_timeout: 300, accs_no_action_timeout: 450,
+    card_auth_required_timeout: 4000, rate_request_timeout: 6000, manual_dial_hold_time: 50, autodialer_hold_time: 300,
+    coin_first_warning_time: 30, coin_second_warning_time: 5, alternate_bong_tone_timeout: 200, delay_after_bong_tone: 125,
+    alternate_delay_after_bong_tone: 125, display_scroll_speed: 0, spare_timer_c: 0, aos_bong_tone_timeout: 600,
+    fgb_aos_second_spill_timeout: 600, datajack_connect_timeout: 15000, datajack_pause_threshold: 45, datajack_ias_timer: 10 };
+const cs = (k, l, x) => u16(k, l, { unit: 'cs', ...x });
+const USER_IF = layout([
+    group('Display and voice', 'Times are in 10 ms steps.'),
+    cs('digit_clear_delay', 'Digit clear delay'),
+    cs('transient_delay', 'Transient prompt delay'),
+    cs('transient_hint_time', 'Transient hint time'),
+    cs('visual_to_voice_delay', 'Visual to voice delay'),
+    cs('voice_repitition_delay', 'Voice repetition delay'),
+    cs('no_action_timeout', 'No action timeout'),
+    cs('card_validation_timeout', 'Card validation timeout'),
+    cs('dj_second_string_dtmf_timeout', 'Datajack 2nd string DTMF timeout'),
+    cs('spare_timer_b', 'Spare timer B'),
+    cs('cp_input_timeout', 'Called party input timeout'),
+    cs('language_timeout', 'Language selection timeout'),
+    cs('cfs_timeout', 'CFS timeout'),
+    cs('called_party_disconnect', 'Called party disconnect'),
+    u8('no_voice_prompt_reps', 'Voice prompt repetitions'),
+    group('Card and operator calls'),
+    cs('accs_digit_timeout', 'ACCS digit timeout'),
+    cs('collect_call_timeout', 'Collect call timeout'),
+    cs('bong_tone_timeout', 'Bong tone timeout'),
+    cs('accs_no_action_timeout', 'ACCS no action timeout'),
+    cs('card_auth_required_timeout', 'Card authorization timeout'),
+    cs('rate_request_timeout', 'Rate request timeout'),
+    cs('manual_dial_hold_time', 'Manual dial hold time'),
+    cs('autodialer_hold_time', 'Autodialer hold time'),
+    group('Coin warnings'),
+    u16('coin_first_warning_time', 'First coin warning', { unit: 's' }),
+    u16('coin_second_warning_time', 'Second coin warning', { unit: 's' }),
+    group('Bong tones and misc'),
+    cs('alternate_bong_tone_timeout', 'Alternate bong tone timeout'),
+    cs('delay_after_bong_tone', 'Delay after bong tone'),
+    cs('alternate_delay_after_bong_tone', 'Alternate delay after bong tone'),
+    cs('display_scroll_speed', 'Display scroll speed'),
+    cs('spare_timer_c', 'Spare timer C'),
+    cs('aos_bong_tone_timeout', 'AOS bong tone timeout'),
+    cs('fgb_aos_second_spill_timeout', 'FGB / AOS second spill timeout'),
+    group('Datajack'),
+    cs('datajack_connect_timeout', 'Datajack connect timeout'),
+    cs('datajack_pause_threshold', 'Datajack pause threshold'),
+    cs('datajack_ias_timer', 'Datajack IAS timer'),
+]);
+
+const COINVL = layout([
+    group('Coins', 'Values are in dollars (stored as cents). Volume is the space each coin takes in the cash box.'),
+    matrix('coins', 'Value, volume and parameter of each coin', COIN_NAMES, [
+        { label: 'value ($)', size: 2, fmt: 'money' },
+        { label: 'volume', size: 2 },
+        { label: 'parameter (hex)', size: 1, fmt: 'hex' },
+    ], { rowLabel: 'coin' }),
+    group('Cash box and escrow'),
+    u16('cash_box_volume', 'Cash box volume'),
+    u16('escrow_volume', 'Escrow volume'),
+    u16('cash_box_volume_threshold', 'Cash box volume threshold'),
+    money32('cash_box_value_threshold', 'Cash box value threshold ($)'),
+    u16('escrow_volume_threshold', 'Escrow volume threshold'),
+    money32('escrow_value_threshold', 'Escrow value threshold ($)'),
+    bytes('pad', 'Padding', 8),
+]);
+
+const SMCARD = layout([
+    group('DES keys', '20 keys, 8 bytes each, in hex.'),
+    ...rep(20, i => hexdigits(`des_key_${i}`, `Key ${i}`, 8)),
+    group('Multiplier / maximum units'),
+    ...rep(15, i => multmax(`mult_max_unit_${i}`, `Entry ${i}`)),
+    group('Rebates and surcharges'),
+    ...SC_REBATES.map((name, i) => money16(`rebate_${i}`, name)),
+    bytes('spare', 'Spare', 6),
+]);
+
+const CARD_SVC_VARIANTS = [
+    { title: 'service codes (magnetic card)', when: (b, base) => b[base + 6] >= 2 && b[base + 6] <= 7, fields: [
+        ...rep(5, i => hexnum(`svc_${i}`, `Service code ${i + 1}`, 2)),
+        bytes('spill', 'Spill string', 8),
+        hexnum('term_char', 'Terminator', 1),
+        u8('discount_index', 'Discount index'),
+    ] },
+    { title: 'smart card parameters', when: (b, base) => b[base + 6] === 10, fields: [
+        u8('key_index', 'Key index'),
+        bytes('check_digits', 'Check digits', 5),
+        bytes('check_value', 'Check value', 8),
+        bytes('manufacturer', 'Manufacturer', 5),
+        u8('discount_index', 'Discount index'),
+    ] },
+    { title: 'service code bytes', when: () => true, fields: [bytes('raw', 'Raw', 20, { wide: true })] },
+];
+function cardEntry(expanded) {
+    return layout([
+        hexdigits('pan_start', 'PAN range start', 3, { note: '6 hex digits, e.g. 601100' }),
+        hexdigits('pan_end', 'PAN range end', 3),
+        pick('standard_cd', 'Card standard', STD_CARD_TYPES, { rerender: true }),
+        bits('vfy_flags', 'Verification', CARD_VFY_FLAGS),
+        u8('p_exp_date', 'Expiry date position'),
+        u8('p_init_date', 'Start date position'),
+        u8('p_disc_data', 'Discretionary data position'),
+        union('svc_code', 'Service code', 20, CARD_SVC_VARIANTS),
+        u8('ref_num', 'Card reference number'),
+        u8('carrier_ref', 'Carrier reference'),
+        ...(expanded ? [hexnum('control_info', 'Control info', 1), u8('bank_info', 'Bank info'), u8('lang_code', 'Language code')] : []),
+    ]);
+}
+const CARD_COLS = [['card', r => r('standard_cd')], ['PAN range', r => `${r('pan_start')} – ${r('pan_end')}`],
+    ['ref', r => r('ref_num')], ['carrier', r => r('carrier_ref')]];
+
+function carrierEntry(expanded) {
+    return layout([
+        u8('carrier_ref', 'Carrier reference', { note: 'cross-referenced from other tables' }),
+        hexdigits('carrier_num', 'Carrier ID code (CIC)', 2, { note: '4 digits, e.g. 0288' }),
+        expanded ? hexnum('valid_cards', 'Valid cards (bitmask)', 4) : hexdigits('valid_cards', 'Valid cards (bitmask)', 3),
+        text('display_prompt', 'Display prompt', 20),
+        bits('control_byte2', 'Control byte 2', CARRIER_CB2),
+        bits('control_byte', 'Control byte', CARRIER_CB),
+        u16('fgb_timer', 'Feature group B timer', { unit: 'cs' }),
+        expanded ? hexnum('international_accept_flags', 'International accept flags', 1) : hexnum('spare', 'Spare', 1),
+        u8('call_entry', 'Call screening entry', { note: 'FGB access entry in the call screening list' }),
+    ]);
+}
+const CARRIER_COLS = [['ref', r => r('carrier_ref')], ['CIC', r => r('carrier_num')], ['prompt', r => r('display_prompt')],
+    ['call entry', r => r('call_entry')]];
+
+function callscrnEntry(long) {
+    return layout([
+        digits('phone_number', 'Number', long ? 9 : 8, { note: 'F = any digit, B = link to another entry' }),
+        calltype('call_type', 'Call type'),
+        u8('carrier_ref', 'Carrier / rate reference', { note: '255 = none' }),
+        bits('free_call_flags', 'Free call flags', CS_FREE_FLAGS),
+        bits('ident2', 'Ident 2 flags', CS_IDENT2),
+        ...(long ? [pick('cs_class', 'Class', CS_CLASSES), bytes('spare', 'Spare', 3)] : []),
+    ].sort((a, b) => CS_ORDER.indexOf(a.key) - CS_ORDER.indexOf(b.key)));
+}
+const CS_ORDER = ['free_call_flags', 'call_type', 'carrier_ref', 'ident2', 'phone_number', 'cs_class', 'spare'];
+const CALLSCRN_COLS = [['number', r => r('phone_number')], ['call type', r => r('call_type')], ['carrier', r => r('carrier_ref')]];
+
+const RDLIST_ENTRY = layout([
+    calltype('call_type', 'Call type'),
+    hexnum('flags', 'Flags', 1, { note: 'includes the "call rating" selection' }),
+    u8('rate_carrier_index', 'Rate / carrier index'),
+    digits('phone_number', 'Number', 8),
+    text('prompt1', 'Display line 1', 20),
+    text('prompt2', 'Display line 2', 20),
+    u32('customer_ref', 'Customer reference'),
+    hexnum('button_indicators', 'Button indicators', 2),
+]);
+
+const RATE_ENTRY = layout([
+    pick('type', 'Rate type', RATE_TYPES),
+    period('initial_period', 'Initial period'),
+    money16('initial_charge', 'Initial charge ($)'),
+    period('additional_period', 'Additional period'),
+    money16('additional_charge', 'Additional charge ($)'),
+]);
+
+const ADMESS_ENTRY = layout([
+    text('message_text', 'Message', 20),
+    u16('display_time', 'Display time', { unit: 'cs' }),
+    admattr('display_attr', 'Effect'),
+    hexnum('spare', 'Spare', 1),
+].sort((a, b) => ['display_time', 'display_attr', 'spare', 'message_text'].indexOf(a.key)
+    - ['display_time', 'display_attr', 'spare', 'message_text'].indexOf(b.key)));
+
+const DEFS = {};
+function def(ids, d) {
+    for (const [i, id] of ids.entries()) {
+        DEFS[id] = { id, ...d, name: typeof d.name === 'function' ? d.name(i) : d.name };
+    }
+}
+
+def([0x16], { code: 'CARD', name: 'Card table (MTR 1.7–1.9)', kind: 'list', ref: 'CARD pp. 2-57', count: 20, entry: cardEntry(false), cols: CARD_COLS });
+def([0x86], { code: 'CARD', name: 'Expanded card table', kind: 'list', ref: 'CARD pp. 2-57', count: 32, entry: cardEntry(true), cols: CARD_COLS });
+def([0x17], { code: 'CARRIER', name: 'Carrier table (MTR 1.7–1.9)', kind: 'list', ref: 'CARRIER pp. 2-69', count: 21,
+    head: layout(rep(3, i => u8(`default_${i}`, `Default carrier ${i + 1}`))), entry: carrierEntry(false), cols: CARRIER_COLS,
+    tail: layout([bytes('spare', 'Spare', 2)]) });
+def([0x87], { code: 'CARRIER', name: 'Expanded carrier table', kind: 'list', ref: 'CARRIER pp. 2-69', count: 33,
+    head: layout(DEFAULT_CARRIERS.map((n, i) => u8(`default_${i}`, `${n} carrier`))), entry: carrierEntry(true), cols: CARRIER_COLS,
+    tail: layout([bytes('spare', 'Spare', 10)]) });
+def([0x18], { code: 'CALLSCRN', name: 'Call screening list (universal)', kind: 'list', ref: 'CALLSCRN pp. 2-33', count: 60,
+    entry: callscrnEntry(false), cols: CALLSCRN_COLS, oneBased: true });
+def([0x3b], { code: 'CALLSCRN', name: 'Expanded call screening list', kind: 'list', ref: 'CALLSCRN pp. 2-33', count: 60,
+    entry: callscrnEntry(true), oneBased: true, cols: [...CALLSCRN_COLS, ['class', r => r('cs_class')]],
+    note: 'src/mm_manager.h describes this table as 85 entries of 12 bytes, but the table shipped in tables/default holds 60 entries of 17 bytes, like 0x5c. This editor follows the shipped table.' });
+def([0x5c], { code: 'CALLSCRN', name: 'Call screening list', kind: 'list', ref: 'CALLSCRN pp. 2-33, FREE pp. 2-187',
+    count: 180, altCounts: [200], entry: callscrnEntry(true), oneBased: true,
+    cols: [...CALLSCRN_COLS, ['class', r => r('cs_class')]] });
+def([0x1a], { code: 'FEATRU', name: 'Feature configuration', kind: 'struct', ref: 'FEATRU pp. 2-151', fields: FEATRU,
+    note: 'mm_manager sets the terminal type byte from the model the terminal reports, so that field is only a default.' });
+def([0x1b, 0x1c], { code: 'PROMPTS', name: i => `Visual prompts, language ${'AB'[i]}`, kind: 'prompts', size: 2800, ref: 'MTR 1.x' });
+def([0x55, 0x56], { code: 'PROMPTS', name: i => `Expanded visual prompts, language ${'AB'[i]}`, kind: 'prompts', size: 8000, ref: 'V1.3 PCP' });
+def([0x1d], { code: 'ADMESS', name: 'Advertising messages', kind: 'list', ref: 'ADMESS pp. 2-5', count: 20, entry: ADMESS_ENTRY,
+    admess: true, cols: [['message', r => r('message_text')], ['time', r => r('display_time')], ['effect', r => r('display_attr')]] });
+def([0x1e], { code: 'USERPRM', name: 'User interface parameters', kind: 'struct', ref: 'USERPRM pp. 2-669', fields: USER_IF,
+    note: 'When this file is missing, mm_manager builds this table itself with the defaults shown under "new table".',
+    create(b) { for (const [k, v] of Object.entries(USER_IF_DEFAULTS)) wrN(b, USER_IF.map[k].o, USER_IF.map[k].size, v); } });
+def([0x21], { code: 'MODEM', name: 'Modem parameters', kind: 'raw', size: 35, ref: 'MODEM pp. 2-279',
+    note: 'The layout of this table is not documented yet, so it is shown as bytes.' });
+def([0x32], { code: 'COINVL', name: 'Coin validation', kind: 'struct', ref: 'COINVL pp. 2-79', fields: COINVL });
+def([0x37], { code: 'RDLIST', name: 'Repertory dialer list', kind: 'list', ref: 'RDLIST pp. 2-329', count: 10, entry: RDLIST_ENTRY,
+    cols: [['number', r => r('phone_number')], ['line 1', r => r('prompt1')], ['line 2', r => r('prompt2')], ['call type', r => r('call_type')]] });
+def([0x3a], { code: 'SERVLEV', name: 'Limited service levels', kind: 'list', ref: 'SERVLEV pp. 2-349', count: 5,
+    entry: layout([pick('restriction_level', 'Restriction', LIMSERV_LEVELS), hhmm('start_time', 'Starts at'), hhmm('duration_time', 'Lasts (HH:MM)')]),
+    cols: [['restriction', r => r('restriction_level')], ['starts', r => r('start_time')], ['lasts', r => r('duration_time')]] });
+def([0x3e], { code: 'DIALRL', name: 'Numbering plan / dialing rules', kind: 'raw', size: 352, ref: 'DIALRL pp. 2-107',
+    regions: [[0, 32, 'fixed format data'], [32, 180, 'numbering plan rules'], [212, 140, 'display formatting']],
+    note: 'Bytes 0–31 are fixed format data, 32–211 numbering plan rules, 212–351 display formatting.' });
+def([0x48], { code: 'SPARE', name: 'Spare table', kind: 'raw', size: 1000, ref: 'SPARE pp. 2-356',
+    note: 'Required on V1.3 control PCPs, unused on V1.0.' });
+def([0x49], { code: 'RATE', name: 'Rate table', kind: 'list', ref: 'RATE pp. 2-321', count: 128,
+    head: layout([stamp('timestamp', 'Table date'), u8('telco_id', 'Telco ID'), bytes('spare', 'Spare', 32, { wide: true })]),
+    entry: RATE_ENTRY, cols: [['type', r => r('type')], ['initial', r => `${r('initial_charge')} / ${r('initial_period')}`],
+        ['additional', r => `${r('additional_charge')} / ${r('additional_period')}`]] });
+def([0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51, 0x5a, 0x5b], { code: 'LCD', name: i => `Local call determination ${i + 1}`,
+    kind: 'grid', grid: 'lcd8', size: 818, ref: 'LCD pp. 2-248' });
+def(range(15).map(i => 0x65 + i), { code: 'LCD', name: i => `Compressed LCD ${i + 1}`, kind: 'grid', grid: 'lcd4', size: 402, ref: 'LCD pp. 2-248' });
+def([...range(14).map(i => 0x88 + i), 0xa0, 0xa1], { code: 'LCD', name: i => `Double-compressed LCD ${i + 1}`, kind: 'grid',
+    grid: 'lcd2', size: 202, ref: 'LCD pp. 2-248' });
+def([0x9a, 0x9b], { code: 'LCD', name: i => `Double-compressed LCD ${i + 15}`, kind: 'grid', grid: 'lcd2', size: 202, ref: 'LCD pp. 2-248' });
+def([0x5d], { code: 'SMCARD', name: 'Smart card parameters', kind: 'struct', ref: 'SMCARD pp. 2-351', fields: SMCARD });
+def([0x96], { code: 'RATENPA', name: 'Set-based rating, NPA', kind: 'grid', grid: 'npa4', size: 400, ref: 'RATENPA pp. 2-327' });
+def([0x97], { code: 'RATEINT', name: 'Set-based rating, international', kind: 'list', ref: 'RATEINT pp. 2-326', count: 200,
+    head: layout([hexnum('flags', 'Flags', 1), u8('default_rate_index', 'Default rate', { note: 'uses RATE table entry 28 + this' }), u8('spare', 'Spare')]),
+    entry: layout([u16('ccode', 'Country code', { note: 'e.g. 44 for the UK' }),
+        u8('flags', 'Rating', { note: '0 = rated by the manager, 1 = blocked, 2–63 = RATE table entry 28 + n' })]),
+    cols: [['country code', r => r('ccode')], ['rating', r => intlRating(r('flags'))]] });
+const intlRating = s => { const v = +s; return v === 0 ? 'manager-rated' : v === 1 ? 'blocked' : `RATE entry ${v + 28}`; };
+
+/* Tables mm_manager builds itself on every download (never read from files). */
+const GENERATED = [
+    [0x15, 'TERM', 'Terminal access parameters', 'The terminal ID comes from the call; NCC numbers come from -n.'],
+    [0x1f, 'INSTSV', 'Installation / servicing', 'Access code (-a) and key card (-k). Packet delay 100 ms, 40 retries before out of service, 150 s coin box lock timeout are fixed.'],
+    [0x20, 'COMMST', 'Communication statistics', 'Fixed defaults: perf stats every day, threshold 1.'],
+    [0x22, 'CALLST', 'Call statistics', 'Fixed defaults: daily call stats, CDR threshold 40.'],
+    [0x23, 'TERM call-in', 'Call-in parameters', 'Calls in twice a day, starting at the time of the current call; 30 CDRs trigger a call.'],
+    [0x26, 'TCASHST', 'Cash box status', 'Read back from the manager database.'],
+];
+
+function expectedSizes(d) {
+    if (d.kind === 'struct') return [d.fields.size];
+    if (d.kind === 'list') {
+        const fixed = (d.head ? d.head.size : 0) + (d.tail ? d.tail.size : 0);
+        return [d.count, ...(d.altCounts || [])].map(n => fixed + n * d.entry.size);
+    }
+    return [d.size];
+}
+function listCount(d, size) {
+    const fixed = (d.head ? d.head.size : 0) + (d.tail ? d.tail.size : 0);
+    return Math.floor((size - fixed) / d.entry.size);
+}
+function createTable(d) {
+    const b = new Uint8Array(expectedSizes(d)[0]);
+    if (d.kind === 'prompts') b.fill(0x20);
+    if (d.admess) for (let i = 0; i < d.count; i++) writeText(b, i * d.entry.size + d.entry.map.message_text.o, 20, '');
+    if (d.create) d.create(b);
+    return b;
+}
+
+const BY_SIZE = {};
+for (const d of Object.values(DEFS)) for (const s of expectedSizes(d)) if (!(s in BY_SIZE)) BY_SIZE[s] = d.id;
+
+function detectTable(name, size) {
+    const m = /mm_table_([0-9a-f]{2})\.bin$/i.exec(name);
+    if (m) return parseInt(m[1], 16);
+    return BY_SIZE[size] ?? null;
+}
+
+/* =====================================================================
+ * Workspace: open files, folders, save
+ * ===================================================================== */
+
+const state = {
+    files: [],
+    current: null,
+    root: null,          /* FileSystemDirectoryHandle when a folder was opened with write access */
+    rootName: '',
+    clip: null,          /* copied list entry */
+    view: 'tables',
+};
+const fsAccess = 'showDirectoryPicker' in window;
+
+function addFile({ path, data, handle = null, dir = null, isNew = false }) {
+    const name = path.split('/').pop();
+    const existing = state.files.find(f => f.path === path);
+    if (existing && !isNew) {
+        existing.bytes = data; existing.orig = data.slice(); existing.handle = handle; existing.dir = dir;
+        return existing;
+    }
+    const tableId = detectTable(name, data.length);
+    const f = {
+        key: uid(), path, name, folder: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '',
+        tableId, def: tableId != null ? DEFS[tableId] || null : null,
+        bytes: data, orig: isNew ? new Uint8Array(0) : data.slice(), handle, dir, view: null,
+    };
+    state.files.push(f);
+    state.files.sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
+    return f;
+}
+
+const isDirty = f => f.bytes.length !== f.orig.length || f.bytes.some((v, i) => v !== f.orig[i]);
+
+async function openFolder() {
+    if (!fsAccess) { $('#dir-input').click(); return; }
+    let dir;
+    try { dir = await window.showDirectoryPicker({ id: 'mm-tables', mode: 'readwrite' }); }
+    catch (e) { if (e.name !== 'AbortError') toast(`hmm, couldn't open that folder: ${e.message}`, 'error'); return; }
+    if (state.files.some(f => !f.practice && isDirty(f)) && !confirm('Opening a folder closes the tables you have open, including unsaved changes. Continue?')) return;
+    state.files = []; state.current = null; state.root = dir; state.rootName = dir.name;
+    let count = 0;
+    async function scan(d, prefix, depth) {
+        for await (const [name, handle] of d.entries()) {
+            if (handle.kind === 'file' && /^mm_table_[0-9a-f]{2}\.bin$/i.test(name)) {
+                const file = await handle.getFile();
+                addFile({ path: prefix + name, data: new Uint8Array(await file.arrayBuffer()), handle, dir: d });
+                count++;
+            } else if (handle.kind === 'directory' && depth < 2 && !name.startsWith('.')) {
+                await scan(handle, prefix + name + '/', depth + 1);
+            }
+        }
+    }
+    try { await scan(dir, '', 0); }
+    catch (e) { toast(`hmm, couldn't read everything in that folder: ${e.message}`, 'error'); }
+    state.current = state.files[0] || null;
+    renderAll();
+    toast(count ? `${count} tables on the line from ${dir.name}/` : `no mm_table_XX.bin files in ${dir.name}/ — try the tables/ folder`, count ? 'ok' : 'info');
+}
+
+async function readPicked(fileList, relative) {
+    for (const file of fileList) {
+        const path = relative ? (file.webkitRelativePath || file.name).split('/').slice(1).join('/') : file.name;
+        if (!/\.bin$/i.test(file.name)) continue;
+        addFile({ path, data: new Uint8Array(await file.arrayBuffer()) });
+    }
+}
+
+async function openFiles() {
+    if (!('showOpenFilePicker' in window)) { $('#file-input').click(); return; }
+    let handles;
+    try {
+        handles = await window.showOpenFilePicker({ id: 'mm-tables', multiple: true,
+            types: [{ description: 'Millennium tables', accept: { 'application/octet-stream': ['.bin'] } }] });
+    } catch (e) { if (e.name !== 'AbortError') toast(`hmm, couldn't open those files: ${e.message}`, 'error'); return; }
+    let last = null;
+    for (const handle of handles) {
+        const file = await handle.getFile();
+        last = addFile({ path: file.name, data: new Uint8Array(await file.arrayBuffer()), handle });
+    }
+    if (last) state.current = last;
+    renderAll();
+}
+
+async function saveFile(f) {
+    if (f.practice) {
+        f.orig = f.bytes.slice();
+        f.practiceSaved = true;
+        toast('saved! (it\'s a practice table, so nothing was written to disk)');
+        updateDirtyUI();
+        return;
+    }
+    try {
+        if (!f.handle && f.dir) f.handle = await f.dir.getFileHandle(f.name, { create: true });
+        if (f.handle && f.handle.createWritable) {
+            const w = await f.handle.createWritable();
+            await w.write(f.bytes);
+            await w.close();
+            f.orig = f.bytes.slice();
+            toast(`saved! ${state.rootName ? state.rootName + '/' : ''}${f.path}`);
+        } else {
+            download(f.name, f.bytes);
+            f.orig = f.bytes.slice();
+            toast(`downloaded ${f.name}${f.folder ? ` — put it in ${f.folder}/` : ''}`, 'info');
+        }
+    } catch (e) {
+        toast(`hmm, that didn't save: ${e.message}. try "download" instead?`, 'error');
+    }
+    updateDirtyUI();
+}
+
+async function saveAll() {
+    for (const f of state.files.filter(isDirty)) await saveFile(f);
+}
+
+/* Get (creating if needed) a sub-folder of the opened root folder. */
+async function rootSubdir(path) {
+    let d = state.root;
+    for (const part of path.split('/').filter(Boolean)) d = await d.getDirectoryHandle(part, { create: true });
+    return d;
+}
+
+/* =====================================================================
+ * Rendering: sidebar
+ * ===================================================================== */
+
+function renderSidebar() {
+    const list = $('#file-list');
+    list.replaceChildren();
+    $('#folder-info').textContent = state.root ? `folder: ${state.rootName}/ (saves write straight back)` :
+        state.files.length ? (fsAccess ? 'opened as files' : 'this browser can\'t write files, so save downloads them') : '';
+    if (!state.files.length) {
+        list.append(h('li', null, tip('Open the ', h('code', null, 'tables/'), ' folder itself, so default/, the model folders and any terminal folders open together.')));
+    }
+    const groups = new Map();
+    for (const f of state.files) {
+        if (!groups.has(f.folder)) groups.set(f.folder, []);
+        groups.get(f.folder).push(f);
+    }
+    for (const [folder, files] of groups) {
+        const ul = h('ul', { class: 'file-list', style: 'max-height:none;overflow:visible' });
+        for (const f of files) {
+            const btn = h('button', { class: 'file-item', type: 'button', 'aria-current': f === state.current ? 'true' : 'false',
+                'data-path': f.path, onclick: () => selectFile(f) },
+                h('span', { class: 'code' + (f.def ? '' : ' unknown') }, f.def ? f.def.code : '?'),
+                h('span', { class: 'nm' }, f.name),
+                h('span', { class: 'dirty', 'data-key': f.key }),
+                h('span', { class: 'desc' }, f.def ? f.def.name : (f.tableId != null ? `table ${hexId(f.tableId)}` : 'unknown table')));
+            ul.append(h('li', null, btn));
+        }
+        const label = h('div', { class: 'overline' }, folder ? folder + '/' : (state.rootName ? state.rootName + '/' : 'opened files'));
+        const remove = folder === 'practice' && files.every(f => f.practice)
+            ? h('button', { class: 'btn link small', type: 'button', onclick: removePractice, style: 'min-height:32px;padding:0' }, 'remove practice tables') : null;
+        list.append(h('li', { class: 'file-group' }, label, remove, ul));
+    }
+    updateDirtyUI();
+}
+
+function updateDirtyUI() {
+    let any = false;
+    for (const f of state.files) {
+        const d = isDirty(f);
+        any = any || d;
+        const dot = document.querySelector(`.dirty[data-key="${f.key}"]`);
+        if (dot) {
+            dot.textContent = d ? '●' : '';
+            dot.title = d ? 'unsaved changes' : '';
+            dot.replaceChildren(d ? '●' : '', d ? h('span', { class: 'sr-only' }, ' unsaved changes') : '');
+        }
+    }
+    $('#save-all-btn').hidden = !any;
+    const badge = $('#ed-dirty');
+    if (badge && state.current) badge.hidden = !isDirty(state.current);
+}
+
+/* =====================================================================
+ * Rendering: editor pane
+ * ===================================================================== */
+
+function emptyState() {
+    return h('div', { class: 'empty' },
+        h('div', { class: 'bubble teal' },
+            h('p', null, h('strong', null, 'it\'s quiet here… for now.')),
+            h('p', null, 'Open your ', h('code', null, 'tables/'), ' folder (the one with ', h('code', null, 'default/'),
+                ' inside) to edit every table at once, or open a few ', h('code', null, 'mm_table_XX.bin'), ' files. You can also drop files anywhere on this page.')),
+        h('div', { class: 'bubble yellow right' },
+            h('p', null, 'Nothing is sent anywhere. Edits stay in this tab until you save, and mm_manager picks the new tables up on the terminal\'s next download.')),
+        h('div', { class: 'btns', style: 'margin-bottom:24px' },
+            h('button', { class: 'btn primary wobble', type: 'button', onclick: startTour }, 'take the tour'),
+            h('button', { class: 'btn', type: 'button', onclick: loadPractice }, 'practise on sample tables'),
+            h('button', { class: 'btn link', type: 'button', onclick: () => showView('help') }, 'read the guide')),
+        h('div', { html: BOOTH_SVG }));
+}
+
+const BOOTH_SVG = `<svg class="booth grain" viewBox="0 0 160 160" aria-hidden="true">
+  <rect x="44" y="22" width="84" height="128" rx="22" fill="var(--riso-teal)"/>
+  <rect x="34" y="12" width="84" height="128" rx="22" fill="var(--riso-pink)"/>
+  <rect x="50" y="30" width="52" height="24" rx="8" fill="var(--paper)"/>
+  <g fill="var(--ink)"><circle cx="62" cy="76" r="5"/><circle cx="76" cy="76" r="5"/><circle cx="90" cy="76" r="5"/>
+  <circle cx="62" cy="92" r="5"/><circle cx="76" cy="92" r="5"/><circle cx="90" cy="92" r="5"/>
+  <circle cx="62" cy="108" r="5"/><circle cx="76" cy="108" r="5"/><circle cx="90" cy="108" r="5"/></g>
+  <rect x="104" y="64" width="10" height="54" rx="5" fill="var(--ink)"/>
+</svg>`;
+
+function renderEditor() {
+    const host = $('#editor');
+    host.replaceChildren();
+    const f = state.current;
+    if (!f) { host.append(emptyState()); return; }
+    const d = f.def;
+    const sizes = d ? expectedSizes(d) : [];
+    const sizeOk = d ? sizes.includes(f.bytes.length) : false;
+    const structured = d && sizeOk && d.kind !== 'raw';
+    if (!f.view || (f.view !== 'bytes' && !structured)) f.view = structured ? 'fields' : 'bytes';
+
+    const actions = h('div', { class: 'btns' },
+        h('button', { class: 'btn primary', type: 'button', 'data-tour': 'save', onclick: () => saveFile(f) },
+            f.practice ? 'save (practice)' : f.handle || f.dir ? 'save' : 'save (download)'),
+        h('button', { class: 'btn', type: 'button', onclick: () => { download(f.name, f.bytes); toast(`downloaded ${f.name}`, 'info'); } }, 'download'),
+        h('button', { class: 'btn', type: 'button', onclick: () => copyForTerminal(f) }, 'copy for a terminal'),
+        h('button', { class: 'btn link', type: 'button', onclick: () => {
+            if (!isDirty(f) || confirm(`Throw away your changes to ${f.name}?`)) {
+                f.bytes = f.orig.length ? f.orig.slice() : createTable(d);
+                renderEditor(); updateDirtyUI();
+            }
+        } }, 'revert'),
+        h('button', { class: 'btn link', type: 'button', onclick: () => {
+            if (isDirty(f) && !confirm(`${f.name} has unsaved changes. Close it anyway?`)) return;
+            state.files = state.files.filter(x => x !== f);
+            state.current = state.files[0] || null;
+            renderAll();
+        } }, 'close'));
+
+    const head = h('div', { class: 'card raised' },
+        h('div', { class: 'ed-head' },
+            h('div', null,
+                h('div', { class: 'overline' }, f.tableId == null ? 'unknown table' : `table ${hexId(f.tableId)} · ${!d ? 'unknown'
+                    : d.ref && d.ref.startsWith(d.code) ? d.ref : d.code + (d.ref ? ' · ' + d.ref : '')}`),
+                h('h1', { class: 'ed-title' }, d ? d.name : f.name),
+                h('div', { class: 'ed-path' }, `${state.rootName ? state.rootName + '/' : ''}${f.path} · ${f.bytes.length} bytes `,
+                    h('span', { class: 'badge tilt', id: 'ed-dirty', hidden: !isDirty(f) }, 'edited'))),
+            actions));
+
+    if (d && d.note) head.append(h('div', { class: 'notice' }, h('p', null, d.note)));
+    if (!d) {
+        head.append(h('div', { class: 'notice ink' }, h('p', null, f.tableId != null
+            ? `Table ${hexId(f.tableId)} has no field layout here, so it opens as bytes. mm_manager only sends the tables it knows for the terminal's firmware.`
+            : 'Can\'t tell which table this is from the name or size. Name it mm_table_XX.bin (XX = table ID in hex) so mm_manager can find it.')));
+    } else if (!sizeOk) {
+        head.append(h('div', { class: 'notice' },
+            h('p', null, `This file is ${f.bytes.length} bytes, but ${d.code} tables are ${sizes.join(' or ')} bytes. The terminal may reject it. Field editing is off until the size is right.`),
+            h('div', { class: 'btns' }, h('button', { class: 'btn small', type: 'button', onclick: () => {
+                const nb = new Uint8Array(sizes[0]);
+                nb.set(f.bytes.subarray(0, sizes[0]));
+                if (d.kind === 'prompts' && f.bytes.length < sizes[0]) nb.fill(0x20, f.bytes.length);
+                f.bytes = nb; f.view = null; renderEditor(); updateDirtyUI();
+            } }, `pad / trim to ${sizes[0]} bytes`))));
+    }
+    host.append(head);
+    const about = d && aboutTable(d);
+    if (about) host.append(about);
+
+    const tabs = h('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Editor view' });
+    const views = structured ? [['fields', d.kind === 'grid' ? 'map' : d.kind === 'list' ? 'entries' : d.kind === 'prompts' ? 'prompts' : 'fields'], ['bytes', 'bytes']] : [['bytes', 'bytes']];
+    for (const [v, label] of views) {
+        tabs.append(h('button', { class: 'tab', type: 'button', role: 'tab', 'data-view': v, 'aria-selected': f.view === v ? 'true' : 'false',
+            onclick: () => { f.view = v; renderEditor(); } }, label));
+    }
+    host.append(tabs);
+    host.append(tip(VIEW_TIPS[f.view === 'bytes' ? 'bytes' : d.kind]));
+
+    const ctx = {
+        changed: () => updateDirtyUI(),
+        rerender: () => renderEditor(),
+    };
+    let body;
+    if (f.view === 'bytes') body = renderHex(f);
+    else if (d.kind === 'struct') body = renderSections(d.fields.fields, f.bytes, 0, ctx);
+    else if (d.kind === 'list') body = renderList(f, ctx);
+    else if (d.kind === 'prompts') body = renderPrompts(f, ctx);
+    else if (d.kind === 'grid') body = renderGrid(f, ctx);
+    host.append(body);
+}
+
+/* ---- list tables (cards, carriers, call screening, rates, ...) ---- */
+
+function renderList(f, ctx) {
+    const d = f.def, b = f.bytes;
+    const headSize = d.head ? d.head.size : 0;
+    const count = listCount(d, b.length);
+    const entryAt = i => headSize + i * d.entry.size;
+    const label = i => d.oneBased ? i + 1 : i;
+    const isEmpty = i => {
+        const s = b.subarray(entryAt(i), entryAt(i) + d.entry.size);
+        return s.every(x => x === 0) || (d.admess && readText(b, entryAt(i) + d.entry.map.message_text.o, 20).trim() === '');
+    };
+    const reader = i => key => fieldText(d.entry.map[key], b, entryAt(i) + d.entry.map[key].o);
+    if (f.sel == null || f.sel >= count) f.sel = 0;
+    if (f.hideEmpty == null) f.hideEmpty = count > 30;
+
+    const out = h('div', { class: 'sections' });
+    if (d.head) out.append(h('div', { class: 'card' }, h('h3', null, 'Table header'), renderFieldGrid(d.head.fields, b, 0, ctx)));
+
+    const tbody = h('tbody');
+    const rows = [];
+    const cellsFor = i => [h('td', { class: 'idx' }, String(label(i))), ...d.cols.map(([, fn]) => h('td', null, fn(reader(i)) || '—'))];
+    const refreshRow = i => {
+        const tr = rows[i];
+        if (!tr) return;
+        tr.replaceChildren(...cellsFor(i));
+        tr.classList.toggle('empty', isEmpty(i));
+        if (d.admess) updateVfd();
+    };
+    const filter = h('input', { class: 'in', type: 'search', placeholder: 'filter entries', 'aria-label': 'Filter entries' });
+    const applyFilter = () => {
+        const q = filter.value.trim().toLowerCase();
+        rows.forEach((tr, i) => {
+            const hide = (f.hideEmpty && isEmpty(i) && i !== f.sel) || (q && !tr.textContent.toLowerCase().includes(q));
+            tr.hidden = hide;
+        });
+    };
+    for (let i = 0; i < count; i++) {
+        const tr = h('tr', { class: 'row-btn' + (isEmpty(i) ? ' empty' : ''), tabindex: '0', 'aria-selected': i === f.sel ? 'true' : 'false' }, cellsFor(i));
+        const choose = () => { f.sel = i; renderEditor(); };
+        tr.addEventListener('click', choose);
+        tr.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } });
+        rows.push(tr);
+        tbody.append(tr);
+    }
+    const emptyCount = range(count).filter(isEmpty).length;
+    const hideBox = h('input', { type: 'checkbox', checked: f.hideEmpty });
+    hideBox.addEventListener('change', () => { f.hideEmpty = hideBox.checked; applyFilter(); });
+    filter.addEventListener('input', applyFilter);
+    const firstEmpty = range(count).find(isEmpty);
+
+    const listCard = h('div', { class: 'card' },
+        h('div', { class: 'section-title' }, h('h3', { style: 'margin:0' }, 'Entries'),
+            h('span', { class: 'badge paper' }, `${count - emptyCount} in use · ${emptyCount} free`)),
+        h('div', { class: 'list-tools' }, filter,
+            h('label', { class: 'check' }, hideBox, 'hide empty entries'),
+            firstEmpty != null && h('button', { class: 'btn small', type: 'button', onclick: () => { f.sel = firstEmpty; renderEditor(); } }, 'add entry')),
+        h('div', { class: 'table-wrap', 'data-tour': 'entries' }, h('table', { class: 'grid' },
+            h('thead', null, h('tr', null, h('th', null, '#'), d.cols.map(([l]) => h('th', null, l)))), tbody)));
+    out.append(listCard);
+    applyFilter();
+
+    /* selected entry */
+    const i = f.sel;
+    const base = entryAt(i);
+    const entryCtx = { changed: () => { refreshRow(i); ctx.changed(); }, rerender: ctx.rerender };
+    let updateVfd = () => {};
+    const form = h('div', { class: 'card entry-form' });
+    const go = n => { f.sel = Math.max(0, Math.min(count - 1, n)); renderEditor(); };
+    form.append(h('div', { class: 'entry-head' },
+        h('h3', { style: 'margin:0' }, `Entry ${label(i)}`),
+        h('div', { class: 'btns' },
+            h('button', { class: 'btn small', type: 'button', disabled: i === 0, onclick: () => go(i - 1), 'aria-label': 'Previous entry' }, '‹ prev'),
+            h('button', { class: 'btn small', type: 'button', disabled: i === count - 1, onclick: () => go(i + 1), 'aria-label': 'Next entry' }, 'next ›'),
+            h('button', { class: 'btn small', type: 'button', onclick: () => { state.clip = { code: d.code, size: d.entry.size, data: b.slice(base, base + d.entry.size) }; toast(`copied entry ${label(i)}`, 'info'); } }, 'copy'),
+            h('button', { class: 'btn small', type: 'button', disabled: !(state.clip && state.clip.size === d.entry.size && state.clip.code === d.code),
+                onclick: () => { b.set(state.clip.data, base); ctx.changed(); renderEditor(); } }, 'paste'),
+            h('button', { class: 'btn small danger', type: 'button', onclick: () => {
+                b.fill(0, base, base + d.entry.size);
+                if (d.admess) writeText(b, base + d.entry.map.message_text.o, 20, '');
+                ctx.changed(); renderEditor();
+            } }, 'clear'))));
+
+    if (d.admess) {
+        const vfd = h('div', { class: 'vfd', 'aria-label': 'Display preview', 'data-tour': 'preview' });
+        updateVfd = () => {
+            const msg = vfdSafe(readText(b, base + d.entry.map.message_text.o, 20)).padEnd(20, ' ').slice(0, 20);
+            const fx = b[base + d.entry.map.display_attr.o] & ~ADMESS_BLANK_BEFORE;
+            const cls = (fx === 1 || fx === 2 || (fx >= 18 && fx <= 21)) ? 'fx-flash' : fx === 3 ? 'fx-scroll-in' : (fx === 4 || fx === 5) ? 'fx-scroll-out' : '';
+            vfd.replaceChildren(h('span', { class: 'line' }, h('span', { class: cls }, msg)));
+        };
+        updateVfd();
+        form.append(h('div', { style: 'margin-bottom:20px' }, h('div', { class: 'overline' }, 'preview'), vfd,
+            h('div', { class: 'ruler', 'aria-hidden': 'true' }, '····|····|····|····|')));
+    }
+    form.append(renderFieldGrid(d.entry.fields, b, base, entryCtx));
+    out.append(form);
+
+    if (d.tail) out.append(h('div', { class: 'card' }, h('h3', null, 'Table trailer'), renderFieldGrid(d.tail.fields, b, headSize + count * d.entry.size, ctx)));
+    if (d.admess) out.append(admessCsvCard(f, ctx));
+    return out;
+}
+
+/* ADMESS <-> config/advert_prompts.csv (the format generate_advert_prompts.py reads) */
+function admessCsvCard(f, ctx) {
+    const d = f.def, b = f.bytes, e = d.entry;
+    const input = h('input', { type: 'file', accept: '.csv,text/csv', hidden: true });
+    input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file) return;
+        const rows = parseCSV(await file.text()).slice(1).filter(r => r.length >= 3);
+        for (let i = 0; i < d.count; i++) {
+            const base = i * e.size;
+            const r = rows[i] || ['0', '0', ''];
+            const ms = parseInt(r[0], 10) || 0, attr = parseInt(r[1], 10) || 0;
+            wrN(b, base + e.map.display_time.o, 2, Math.min(65535, Math.floor(ms / 10)));
+            b[base + e.map.display_attr.o] = attr & 0xff;
+            b[base + e.map.spare.o] = 0;
+            writeText(b, base + e.map.message_text.o, 20, r[2].slice(0, 20));
+        }
+        input.value = '';
+        ctx.changed();
+        renderEditor();
+        toast(`loaded ${Math.min(rows.length, d.count)} messages from ${file.name}`);
+    });
+    const exportCsv = () => {
+        const lines = ['Duration (in ms),Attribute,Message'];
+        for (let i = 0; i < d.count; i++) {
+            const base = i * e.size;
+            lines.push([rdN(b, base + e.map.display_time.o, 2) * 10, b[base + e.map.display_attr.o],
+                csvCell(readText(b, base + e.map.message_text.o, 20).replace(/ +$/, ''))].join(','));
+        }
+        download('advert_prompts.csv', lines.join('\n') + '\n', 'text/csv');
+    };
+    return h('div', { class: 'card' }, h('h3', null, 'advert_prompts.csv'),
+        h('p', { class: 'section-note' }, 'Same format as config/advert_prompts.csv, which generate_advert_prompts.py turns into this table: duration in ms, attribute byte, message.'),
+        h('div', { class: 'btns' }, h('button', { class: 'btn', type: 'button', onclick: () => input.click() }, 'load from csv'),
+            h('button', { class: 'btn', type: 'button', onclick: exportCsv }, 'save as csv')), input);
+}
+
+/* ---- visual prompt tables: N strings of 20 characters ---- */
+
+function renderPrompts(f, ctx) {
+    const b = f.bytes, n = Math.floor(b.length / 20);
+    const per = 100;
+    if (f.page == null) f.page = 0;
+    const filter = h('input', { class: 'in', type: 'search', placeholder: 'find text', 'aria-label': 'Find prompt text' });
+    filter.value = f.q || '';
+    const listEl = h('div', { class: 'prompt-list' });
+    const pager = h('div', { class: 'pager' });
+    const draw = () => {
+        const q = (f.q || '').toLowerCase();
+        const hits = range(n).filter(i => !q || readText(b, i * 20, 20).toLowerCase().includes(q));
+        const pages = Math.max(1, Math.ceil(hits.length / per));
+        f.page = Math.min(f.page, pages - 1);
+        listEl.replaceChildren(...hits.slice(f.page * per, f.page * per + per).map(i => {
+            const inp = h('input', { class: 'in', maxlength: '20', spellcheck: 'false', 'aria-label': `Prompt ${i}` });
+            inp.value = readText(b, i * 20, 20);
+            inp.addEventListener('input', () => { writeText(b, i * 20, 20, inp.value); ctx.changed(); });
+            return h('div', { class: 'prompt-row' }, h('span', { class: 'idx' }, String(i)), inp);
+        }));
+        pager.replaceChildren(
+            h('button', { class: 'btn small', type: 'button', disabled: f.page === 0, onclick: () => { f.page--; draw(); } }, '‹ prev'),
+            h('span', { class: 'meta' }, `${hits.length} prompts · page ${f.page + 1} of ${pages}`),
+            h('button', { class: 'btn small', type: 'button', disabled: f.page >= pages - 1, onclick: () => { f.page++; draw(); } }, 'next ›'));
+    };
+    filter.addEventListener('input', () => { f.q = filter.value; f.page = 0; draw(); });
+    draw();
+    return h('div', { class: 'card' },
+        h('div', { class: 'section-title' }, h('h3', { style: 'margin:0' }, `${n} prompts`), h('span', { class: 'badge paper' }, '20 characters each')),
+        h('p', { class: 'section-note' }, 'Each prompt is one 20-character line of the display. Shorter text is padded with spaces.'),
+        h('div', { class: 'list-tools' }, filter), pager, listEl);
+}
+
+/* ---- LCD and NPA maps ---- */
+
+const VALUE_SETS = {
+    lcd2: [[0, 'L', 'local', 'v-local'], [1, '?', 'LMS / other', 'v-lms'], [2, '$', 'intra-LATA toll', 'v-intra'], [3, '–', 'invalid', 'v-invalid']],
+    lcd4: [[0, 'L', 'local', 'v-local'], [1, 'M', 'LMS', 'v-lms'], [2, '$', 'intra-LATA toll', 'v-intra'], [3, '–', 'invalid', 'v-invalid'],
+        [4, '$$', 'inter-LATA toll', 'v-inter']],
+    npa4: [[0, '–', 'not available', 'v-invalid'], [2, '·', 'unassigned / non-geographic / toll-free', 'v-lms'], [4, 'D', 'domestic (LCD decides)', 'v-local'],
+        [6, 'F', 'foreign / international', 'v-inter']],
+};
+const GRIDS = {
+    lcd8: { npaAt: 0, dataAt: 18, per: 1, bitsPer: 8, values: VALUE_SETS.lcd4, axis: 'NXX', max: 255 },
+    lcd4: { npaAt: 0, dataAt: 2, per: 2, bitsPer: 4, values: VALUE_SETS.lcd4, axis: 'NXX', max: 15 },
+    lcd2: { npaAt: 0, dataAt: 2, per: 4, bitsPer: 2, values: VALUE_SETS.lcd2, axis: 'NXX', max: 3 },
+    npa4: { npaAt: null, dataAt: 0, per: 2, bitsPer: 4, values: VALUE_SETS.npa4, axis: 'NPA', max: 15 },
+};
+function cellGet(g, b, i) {
+    const shift = 8 - g.bitsPer * ((i % g.per) + 1);
+    return (b[g.dataAt + Math.floor(i / g.per)] >> shift) & ((1 << g.bitsPer) - 1);
+}
+function cellSet(g, b, i, v) {
+    const shift = 8 - g.bitsPer * ((i % g.per) + 1);
+    const mask = ((1 << g.bitsPer) - 1) << shift;
+    const at = g.dataAt + Math.floor(i / g.per);
+    b[at] = (b[at] & ~mask) | ((v << shift) & mask);
+}
+
+let stopPainting = null;
+for (const type of ['pointerup', 'pointercancel']) {
+    window.addEventListener(type, () => { if (stopPainting) { stopPainting(); stopPainting = null; } });
+}
+
+function renderGrid(f, ctx) {
+    const d = f.def, g = GRIDS[d.grid], b = f.bytes;
+    const valueInfo = v => g.values.find(x => x[0] === v) || [v, String(v), `value ${v}`, 'v-other'];
+    if (f.brush == null) f.brush = g.values[0][0];
+    const out = h('div', { class: 'sections' });
+
+    if (g.npaAt != null) {
+        out.append(h('div', { class: 'card' }, h('h3', null, 'Area code'),
+            h('p', { class: 'section-note' }, 'The NPA this table describes. The map below covers its exchanges, NXX 200–999.'),
+            h('div', { class: 'fields' }, fieldEl({ ...npa('npa', 'NPA'), o: 0 }, b, g.npaAt, ctx),
+                d.grid === 'lcd8' ? fieldEl({ ...bytes('spare', 'Spare', 16), o: 2 }, b, 0, ctx) : null)));
+    }
+
+    const cellsHost = h('div', { class: 'blocks' });
+    const stats = h('div', { class: 'stats' });
+    const drawStats = () => {
+        const counts = new Map();
+        for (let i = 0; i < 800; i++) { const v = cellGet(g, b, i); counts.set(v, (counts.get(v) || 0) + 1); }
+        stats.replaceChildren(...[...counts.entries()].sort((a, c) => a[0] - c[0]).map(([v, c]) => {
+            const [, sym, name] = valueInfo(v);
+            return h('span', { class: 'badge paper' }, `${sym} ${name}: ${c}`);
+        }));
+    };
+    const paletteEl = h('div', { class: 'palette', role: 'group', 'aria-label': 'Paint with', 'data-tour': 'palette' });
+    const drawPalette = () => {
+        paletteEl.replaceChildren(...g.values.map(([v, sym, name, cls]) => h('button', {
+            class: 'swatch', type: 'button', 'aria-pressed': f.brush === v ? 'true' : 'false',
+            onclick: () => { f.brush = v; drawPalette(); },
+        }, h('span', { class: `chipv ${cls}` }, sym), `${name} (${v})`)));
+    };
+    drawPalette();
+
+    const paint = (cell) => {
+        const i = +cell.dataset.i;
+        if (cellGet(g, b, i) === f.brush) return;
+        cellSet(g, b, i, f.brush);
+        const [, sym, name, cls] = valueInfo(f.brush);
+        cell.className = `cell ${cls}`;
+        cell.textContent = sym;
+        cell.title = `${cell.dataset.n}: ${name}`;
+        ctx.changed();
+    };
+    /* Tap or click paints one cell; dragging with a mouse or pen paints a stroke. */
+    let painting = false;
+    cellsHost.addEventListener('pointerdown', e => {
+        const c = e.target.closest('.cell');
+        if (!c) return;
+        paint(c);
+        if (e.pointerType !== 'touch') {
+            painting = true;
+            e.preventDefault();
+        }
+        stopPainting = () => { painting = false; drawStats(); };
+    });
+    cellsHost.addEventListener('pointermove', e => {
+        if (!painting) return;
+        const c = document.elementFromPoint(e.clientX, e.clientY);
+        if (c && c.classList.contains('cell') && cellsHost.contains(c)) paint(c);
+    });
+
+    let html = '';
+    for (let hundred = 2; hundred <= 9; hundred++) {
+        html += `<div class="block"><h4>${hundred}xx</h4><div class="cells"><span></span>`;
+        for (let c = 0; c < 10; c++) html += `<span class="ch">${c}</span>`;
+        for (let r = 0; r < 10; r++) {
+            html += `<span class="rh">${hundred}${r}x</span>`;
+            for (let c = 0; c < 10; c++) {
+                const n = hundred * 100 + r * 10 + c, i = n - 200;
+                const [, sym, name, cls] = valueInfo(cellGet(g, b, i));
+                html += `<span class="cell ${cls}" data-i="${i}" data-n="${n}" title="${n}: ${name}">${sym}</span>`;
+            }
+        }
+        html += '</div></div>';
+    }
+    cellsHost.innerHTML = html;
+    drawStats();
+
+    /* precise alternative to painting: set a range */
+    const from = h('input', { class: 'in', type: 'number', min: '200', max: '999', value: '200', 'aria-label': `First ${g.axis}` });
+    const to = h('input', { class: 'in', type: 'number', min: '200', max: '999', value: '999', 'aria-label': `Last ${g.axis}` });
+    const val = selectEl([...g.values.map(([v, s, n]) => [v, `${s} ${n}`])], f.brush, { 'aria-label': 'Value' });
+    const rangeMsg = h('div', { class: 'fhint' });
+    const applyRange = () => {
+        const a = parseInt(from.value, 10), z = parseInt(to.value, 10), v = parseInt(val.value, 10);
+        if (!(a >= 200 && z <= 999 && a <= z)) { rangeMsg.textContent = `pick ${g.axis} values from 200 to 999, first ≤ last`; return; }
+        for (let n = a; n <= z; n++) cellSet(g, b, n - 200, v);
+        ctx.changed();
+        renderEditor();
+        toast(`${g.axis} ${a}–${z} set to ${valueInfo(v)[2]}`);
+    };
+
+    out.append(h('div', { class: 'card' },
+        h('div', { class: 'section-title' }, h('h3', { style: 'margin:0' }, `${g.axis} map`)),
+        h('p', { class: 'section-note' }, d.grid === 'npa4'
+            ? 'How the terminal treats each area code before the LCD tables are checked. Pick a value, then click or drag across area codes.'
+            : 'How a call to each exchange in this area code is rated. Pick a value, then click or drag across exchanges.'),
+        paletteEl, cellsHost, stats));
+    out.append(h('div', { class: 'card' }, h('h3', null, 'Set a range'),
+        h('div', { class: 'fields' },
+            h('div', { class: 'field' }, h('span', { class: 'flabel' }, `From ${g.axis}`), from),
+            h('div', { class: 'field' }, h('span', { class: 'flabel' }, `To ${g.axis}`), to),
+            h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Value'), val)),
+        rangeMsg,
+        h('div', { class: 'btns', style: 'margin-top:12px' }, h('button', { class: 'btn', type: 'button', onclick: applyRange }, 'apply to range'))));
+    return out;
+}
+
+/* ---- byte editor, available for every table ---- */
+
+function byteLabels(f) {
+    const d = f.def, n = f.bytes.length;
+    const labels = new Array(n).fill('');
+    const mark = (fields, base, prefix) => {
+        for (const fl of fields) {
+            if (fl.kind === 'group') continue;
+            if (fl.kind === 'matrix') {
+                let colBase = base + fl.o;
+                for (const c of fl.cols) {
+                    fl.rows.forEach((r, ri) => { for (let k = 0; k < c.size; k++) labels[colBase + ri * c.size + k] = `${prefix}${r} ${c.label}`; });
+                    colBase += c.size * fl.rows.length;
+                }
+                continue;
+            }
+            for (let k = 0; k < fl.size; k++) if (base + fl.o + k < n) labels[base + fl.o + k] = prefix + fl.label;
+        }
+    };
+    if (!d) return labels;
+    if (d.kind === 'struct') mark(d.fields.fields, 0, '');
+    if (d.kind === 'list') {
+        const hs = d.head ? d.head.size : 0, count = listCount(d, n);
+        if (d.head) mark(d.head.fields, 0, 'header: ');
+        for (let i = 0; i < count; i++) mark(d.entry.fields, hs + i * d.entry.size, `entry ${d.oneBased ? i + 1 : i}: `);
+        if (d.tail) mark(d.tail.fields, hs + count * d.entry.size, 'trailer: ');
+    }
+    if (d.kind === 'prompts') for (let i = 0; i < n; i++) labels[i] = `prompt ${Math.floor(i / 20)}, char ${i % 20 + 1}`;
+    if (d.kind === 'grid') {
+        const g = GRIDS[d.grid];
+        if (g.npaAt != null) { labels[0] = labels[1] = 'NPA'; }
+        for (let i = 0; i < 800; i++) labels[g.dataAt + Math.floor(i / g.per)] = `${g.axis} ${200 + Math.floor(i / g.per) * g.per}–${200 + Math.floor(i / g.per) * g.per + g.per - 1}`;
+        if (d.grid === 'lcd8') for (let i = 2; i < 18; i++) labels[i] = 'spare';
+    }
+    if (d.regions) for (const [start, len, name] of d.regions) for (let i = start; i < start + len && i < n; i++) labels[i] = name;
+    return labels;
+}
+
+function renderHex(f) {
+    const b = f.bytes, per = 256, pages = Math.max(1, Math.ceil(b.length / per));
+    if (f.hexPage == null) f.hexPage = 0;
+    f.hexPage = Math.min(f.hexPage, pages - 1);
+    const labels = byteLabels(f);
+    const status = h('div', { class: 'hex-status meta', 'aria-live': 'polite' }, 'hover or focus a byte to see which field it belongs to.');
+    const host = h('div', { class: 'hex', 'data-tour': 'hex' });
+    const pager = h('div', { class: 'pager' });
+    const draw = () => {
+        const start = f.hexPage * per;
+        const tbody = h('tbody');
+        for (let row = start; row < Math.min(b.length, start + per); row += 16) {
+            const tr = h('tr', null, h('td', { class: 'off' }, row.toString(16).padStart(4, '0')));
+            const ascii = h('td', { class: 'ascii' });
+            const drawAscii = () => { ascii.textContent = Array.from(b.subarray(row, Math.min(b.length, row + 16)), c => c >= 0x20 && c < 0x7f ? String.fromCharCode(c) : '·').join(''); };
+            for (let k = 0; k < 16; k++) {
+                const at = row + k;
+                if (at >= b.length) { tr.append(h('td')); continue; }
+                const inp = h('input', { maxlength: '2', spellcheck: 'false', autocomplete: 'off', 'aria-label': `byte ${at}${labels[at] ? ', ' + labels[at] : ''}` });
+                inp.value = hex2(b[at]);
+                if (f.orig[at] !== b[at]) inp.classList.add('changed');
+                const tell = () => { status.textContent = `byte ${at} (0x${at.toString(16)}) = ${b[at]} · ${labels[at] || 'no field'}`; };
+                inp.addEventListener('focus', () => { tell(); inp.select(); });
+                inp.addEventListener('mouseenter', tell);
+                inp.addEventListener('input', () => {
+                    if (!/^[0-9a-f]{1,2}$/i.test(inp.value)) { status.textContent = 'use two hex digits, 00–ff'; return; }
+                    b[at] = parseInt(inp.value, 16);
+                    inp.classList.toggle('changed', f.orig[at] !== b[at]);
+                    drawAscii();
+                    tell();
+                    updateDirtyUI();
+                    if (inp.value.length === 2) {
+                        const next = inp.closest('td').nextElementSibling?.querySelector('input') || inp.closest('tr').nextElementSibling?.querySelector('input');
+                        if (next) next.focus();
+                    }
+                });
+                inp.addEventListener('blur', () => { inp.value = hex2(b[at]); });
+                tr.append(h('td', null, inp));
+            }
+            drawAscii();
+            tr.append(ascii);
+            tbody.append(tr);
+        }
+        host.replaceChildren(h('table', null,
+            h('thead', null, h('tr', null, h('th'), range(16).map(k => h('th', null, k.toString(16))), h('th'))), tbody));
+        pager.replaceChildren(
+            h('button', { class: 'btn small', type: 'button', disabled: f.hexPage === 0, onclick: () => { f.hexPage--; draw(); } }, '‹ prev'),
+            h('span', { class: 'meta' }, `bytes ${start}–${Math.min(b.length, start + per) - 1} of ${b.length}`),
+            h('button', { class: 'btn small', type: 'button', disabled: f.hexPage >= pages - 1, onclick: () => { f.hexPage++; draw(); } }, 'next ›'));
+    };
+    draw();
+    return h('div', { class: 'card' },
+        h('div', { class: 'section-title' }, h('h3', { style: 'margin:0' }, 'Bytes')),
+        h('p', { class: 'section-note' }, 'The file exactly as mm_manager sends it, after the table ID byte. Changed bytes are highlighted.'),
+        pages > 1 ? pager : null, host, status);
+}
+
+/* ---- dialogs: new table, copy for a terminal ---- */
+
+function openDialog(title, body, okLabel, onOk) {
+    const dlg = $('#dialog');
+    const msg = h('div', { class: 'fhint', role: 'alert' });
+    const form = h('form', { method: 'dialog' }, h('h2', null, title), body, msg,
+        h('div', { class: 'btns' },
+            h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'cancel'),
+            h('button', { class: 'btn primary', type: 'submit' }, okLabel)));
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const err = await onOk();
+        if (err) { msg.textContent = err; msg.style.color = 'var(--pink-ink)'; return; }
+        dlg.close();
+    });
+    dlg.replaceChildren(form);
+    dlg.showModal();
+    const first = form.querySelector('input, select');
+    if (first) first.focus();
+}
+
+function knownFolders() {
+    const set = new Set(state.files.map(f => f.folder).filter(Boolean));
+    ['default', 'multipay', 'coin', 'desk', 'card_only', 'inmate'].forEach(x => set.add(x));
+    return [...set].sort();
+}
+
+function folderPicker(initial) {
+    const NEW = '__new__';
+    const folders = knownFolders();
+    const sel = selectEl([...folders.map(x => [x, x + '/']), [NEW, 'a terminal (enter its 10-digit number)…']],
+        folders.includes(initial) ? initial : 'default', { id: uid() });
+    const termInput = h('input', { class: 'in', inputmode: 'numeric', maxlength: '10', placeholder: '4085551234' });
+    const termField = h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Terminal phone number (NPA-NXX-XXXX)'), termInput,
+        h('div', { class: 'fhint' }, 'mm_manager checks tables/<terminal number>/ first, then the model folder, then default/.'));
+    const sync = () => { termField.hidden = sel.value !== NEW; };
+    sel.addEventListener('change', sync);
+    sync();
+    return {
+        el: h('div', null, h('div', { class: 'field' }, h('label', { class: 'flabel', for: sel.id }, 'Folder'), sel), termField),
+        value() {
+            if (sel.value !== NEW) return { folder: sel.value };
+            const t = termInput.value.trim();
+            if (!/^\d{10}$/.test(t)) return { error: 'The terminal number needs exactly 10 digits.' };
+            return { folder: t };
+        },
+    };
+}
+
+function newTableDialog() {
+    const ids = Object.keys(DEFS).map(Number).sort((a, b) => a - b);
+    const sel = selectEl(ids.map(id => [id, `${hexId(id)} · ${DEFS[id].code} · ${DEFS[id].name}`]), 0x1e, { id: uid() });
+    const picker = state.root ? folderPicker('default') : null;
+    const body = h('div', { class: 'fields' },
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: sel.id }, 'Table'), sel,
+            h('div', { class: 'fhint' }, 'Starts blank, except user interface parameters (0x1e), which start with mm_manager\'s built-in values.')),
+        picker ? picker.el : h('p', { class: 'meta' }, 'No folder is open, so save will download the new file.'));
+    openDialog('new table', body, 'create it', () => {
+        const d = DEFS[+sel.value];
+        let folder = '';
+        if (picker) { const v = picker.value(); if (v.error) return v.error; folder = v.folder; }
+        const path = (folder ? folder + '/' : '') + tableFileName(d.id);
+        if (state.files.some(x => x.path === path)) return `${path} is already open.`;
+        const f = addFile({ path, data: createTable(d), isNew: true });
+        if (picker) rootSubdir(folder).then(dir => { f.dir = dir; renderEditor(); }).catch(e => toast(`hmm, couldn't make ${folder}/: ${e.message}`, 'error'));
+        state.current = f;
+        renderAll();
+        toast(`new ${d.code} table ready — press save to write it`, 'info');
+        return null;
+    });
+}
+
+function copyForTerminal(f) {
+    const input = h('input', { class: 'in', id: uid(), inputmode: 'numeric', maxlength: '10', placeholder: '4085551234' });
+    const body = h('div', { class: 'fields' },
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: input.id }, 'Terminal phone number (NPA-NXX-XXXX)'), input,
+            h('div', { class: 'fhint' }, state.root
+                ? `Writes ${state.rootName}/<number>/${f.name}. Open your tables/ folder for mm_manager to find it.`
+                : `Downloads ${f.name}; put it in tables/<number>/.`)));
+    openDialog('copy for one terminal', body, state.root ? 'copy it' : 'download it', async () => {
+        const t = input.value.trim();
+        if (!/^\d{10}$/.test(t)) return 'The terminal number needs exactly 10 digits.';
+        if (!state.root) { download(f.name, f.bytes); toast(`downloaded ${f.name} — put it in tables/${t}/`, 'info'); return null; }
+        try {
+            const dir = await rootSubdir(t);
+            const handle = await dir.getFileHandle(f.name, { create: true });
+            const w = await handle.createWritable();
+            await w.write(f.bytes);
+            await w.close();
+            const copy = addFile({ path: `${t}/${f.name}`, data: f.bytes.slice(), handle, dir });
+            state.current = copy;
+            renderAll();
+            toast(`saved a copy for terminal ${t}`);
+            return null;
+        } catch (e) { return `Couldn't write it: ${e.message}`; }
+    });
+}
+
+/* =====================================================================
+ * Manager settings: builds the mm_manager command line
+ * ===================================================================== */
+
+const MGR_DEFAULTS = {
+    link: 'sip', sipMode: 'register', sipUser: '', sipPass: '', sipHost: '', sipHostPort: '', passEnv: true,
+    sipPort: '', rtpPort: '', expires: '', authUser: '', domain: '', localIp: '', codec: '', answerTone: '',
+    device: 'auto', baud: '', init: '', noCarrier: false, replay: '',
+    ncc1: '', ncc2: '', access: '', keycard: '', defaultDir: '', termDir: '', complete: false, minimal: false,
+    log: '', pcap: '', udp: false, verbose: 1, quiet: false, rating: false, shell: 'posix',
+};
+const mgr = { ...MGR_DEFAULTS, ...safeStorage(s => JSON.parse(s.getItem('mmTableEditor.manager') || '{}'), {}) };
+const saveMgr = () => safeStorage(s => s.setItem('mmTableEditor.manager', JSON.stringify({ ...mgr, sipPass: '' })));
+
+function quoteArg(s, shell) {
+    if (s === '') return shell === 'posix' ? "''" : '""';
+    if (shell === 'posix') return /^[A-Za-z0-9_@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
+    return /[\s&|<>^";]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function buildCommand() {
+    const args = [];
+    const warn = [];
+    const env = [];
+    if (mgr.link === 'sip') {
+        let spec;
+        if (mgr.sipMode === 'listen') spec = 'listen';
+        else {
+            if (!mgr.sipUser || !mgr.sipHost) warn.push('SIP: user and registrar are both needed to register.');
+            const pass = mgr.sipPass && !mgr.passEnv ? ':' + mgr.sipPass : '';
+            spec = `${mgr.sipUser}${pass}@${mgr.sipHost}${mgr.sipHostPort ? ':' + mgr.sipHostPort : ''}`;
+            if (mgr.sipPass && mgr.passEnv) env.push(['MM_SIP_PASSWORD', mgr.sipPass]);
+        }
+        const opts = [['port', mgr.sipPort], ['rtp_port', mgr.rtpPort], ['expires', mgr.expires], ['auth_user', mgr.authUser],
+            ['domain', mgr.domain], ['local_ip', mgr.localIp], ['codec', mgr.codec], ['answer_tone', mgr.answerTone]];
+        for (const [k, v] of opts) if (v !== '' && v != null) spec += `;${k}=${v}`;
+        for (const [k, v] of [['port', mgr.sipPort], ['rtp_port', mgr.rtpPort], ['expires', mgr.expires]]) {
+            if (v !== '' && !/^\d+$/.test(v)) warn.push(`SIP ${k} should be a number.`);
+        }
+        args.push('-S', spec);
+    } else if (mgr.link === 'modem') {
+        args.push('-m');
+        if (mgr.device && mgr.device !== 'auto') args.push('-f', mgr.device);
+        if (mgr.baud) args.push('-b', String(mgr.baud));
+        if (mgr.init) args.push('-i', mgr.init);
+        if (mgr.noCarrier) args.push('-w');
+    } else {
+        if (!mgr.replay) warn.push('Replay: choose a .dlog transcript to play back.');
+        else args.push('-f', mgr.replay);
+    }
+    if (!mgr.ncc1) warn.push('Primary NCC number: the number the payphone dials to reach this manager.');
+    for (const [label, v] of [['Primary NCC', mgr.ncc1], ['Secondary NCC', mgr.ncc2]]) {
+        if (v && !/^\d{1,15}$/.test(v)) warn.push(`${label} number must be 1 to 15 digits.`);
+    }
+    if (mgr.ncc1) args.push('-n', mgr.ncc1);
+    if (mgr.ncc2) args.push('-n', mgr.ncc2);
+    if (mgr.access) { if (!/^\d{7}$/.test(mgr.access)) warn.push('Access code must be exactly 7 digits.'); args.push('-a', mgr.access); }
+    if (mgr.keycard) { if (!/^\d{10}$/.test(mgr.keycard)) warn.push('Key card number must be exactly 10 digits.'); args.push('-k', mgr.keycard); }
+    if (mgr.defaultDir) args.push('-d', mgr.defaultDir);
+    if (mgr.termDir) args.push('-t', mgr.termDir);
+    if (mgr.complete) args.push('-c');
+    if (mgr.minimal) args.push('-s');
+    if (mgr.complete && mgr.minimal) warn.push('-c and -s pull in opposite directions; pick one.');
+    if (mgr.rating) args.push('-r');
+    if (mgr.log) args.push('-l', mgr.log);
+    if (mgr.pcap) args.push('-p', mgr.pcap);
+    if (mgr.udp) args.push('-u');
+    if (+mgr.verbose > 0) args.push('-' + 'v'.repeat(+mgr.verbose));
+    if (mgr.quiet) args.push('-q');
+    if (mgr.baud && !/^\d+$/.test(String(mgr.baud))) warn.push('Baud rate should be a number, e.g. 19200.');
+
+    const sh = mgr.shell;
+    const exe = sh === 'posix' ? './mm_manager' : 'mm_manager.exe';
+    let line = [exe, ...args.map(a => quoteArg(a, sh))].join(' ');
+    if (env.length) {
+        line = sh === 'posix'
+            ? env.map(([k, v]) => `${k}=${quoteArg(v, sh)}`).join(' ') + ' ' + line
+            : env.map(([k, v]) => `set "${k}=${v}"`).join(' && ') + ' && ' + line;
+    }
+    return { line, warn };
+}
+
+function renderManager() {
+    const host = $('#view-manager');
+    host.replaceChildren();
+    const out = h('pre', { class: 'cmd', 'aria-live': 'polite' });
+    const warnList = h('ul', { class: 'warn-list' });
+    const refresh = () => {
+        const { line, warn } = buildCommand();
+        out.textContent = line;
+        warnList.replaceChildren(...warn.map(w => h('li', null, w)));
+        warnList.hidden = !warn.length;
+        saveMgr();
+        host.querySelectorAll('[data-show]').forEach(el => {
+            const [k, v] = el.dataset.show.split('=');
+            el.hidden = String(mgr[k]) !== v;
+        });
+    };
+
+    const field = (key, label, x = {}) => {
+        const id = uid();
+        const inp = h('input', { id, class: 'in' + (x.mono ? ' mono' : ''), type: x.type || 'text', placeholder: x.placeholder || '',
+            inputmode: x.inputmode || null, autocomplete: x.autocomplete || 'off', spellcheck: 'false' });
+        inp.value = mgr[key] ?? '';
+        inp.addEventListener('input', () => { mgr[key] = inp.value.trim(); refresh(); });
+        return h('div', { class: 'field' + (x.wide ? ' wide' : ''), 'data-mgr': key }, h('label', { class: 'flabel', for: id }, label), inp,
+            x.hint ? h('div', { class: 'fhint' }, x.hint) : null);
+    };
+    const check = (key, label) => {
+        const cb = h('input', { type: 'checkbox', checked: !!mgr[key] });
+        cb.addEventListener('change', () => { mgr[key] = cb.checked; refresh(); });
+        return h('label', { class: 'check' }, cb, label);
+    };
+    const choose = (key, label, options) => {
+        const id = uid();
+        const sel = selectEl(options, mgr[key], { id });
+        sel.addEventListener('change', () => { mgr[key] = sel.value; refresh(); });
+        return h('div', { class: 'field' }, h('label', { class: 'flabel', for: id }, label), sel);
+    };
+    const radios = (key, options) => h('div', { class: 'radio-row', role: 'radiogroup' }, options.map(([v, label]) => {
+        const r = h('input', { type: 'radio', name: key, value: v, checked: mgr[key] === v });
+        r.addEventListener('change', () => { if (r.checked) { mgr[key] = v; refresh(); } });
+        return h('label', { class: 'check' }, r, label);
+    }));
+
+    const form = h('div', { class: 'sections' },
+        h('div', { class: 'card' }, h('h3', null, 'How the payphone reaches the manager'),
+            radios('link', [['sip', 'SIP virtual modem'], ['modem', 'serial modem'], ['replay', 'replay a transcript']]),
+            h('div', { 'data-show': 'link=sip', style: 'margin-top:16px' },
+                radios('sipMode', [['register', 'register to a PBX / provider'], ['listen', 'listen for direct SIP calls']]),
+                h('div', { class: 'fields', style: 'margin-top:16px' },
+                    h('div', { 'data-show': 'sipMode=register', class: 'contents' },
+                        field('sipUser', 'SIP user / extension', { placeholder: 'e.g. 1000' }),
+                        field('sipHost', 'Registrar', { placeholder: 'e.g. pbx.example.com' }),
+                        field('sipHostPort', 'Registrar port', { placeholder: 'default 5060', inputmode: 'numeric' }),
+                        field('sipPass', 'Password', { type: 'password', autocomplete: 'new-password', hint: 'Never stored by this page.' }),
+                        field('authUser', 'Auth user', { placeholder: 'same as user' }),
+                        field('domain', 'Domain', { placeholder: 'same as registrar' }),
+                        field('expires', 'Registration expiry (s)', { placeholder: 'default 300', inputmode: 'numeric' })),
+                    field('sipPort', 'Local SIP port', { placeholder: 'default 5060', inputmode: 'numeric' }),
+                    field('rtpPort', 'Local RTP port', { placeholder: 'default 10000', inputmode: 'numeric' }),
+                    field('localIp', 'Advertised IP', { placeholder: 'found automatically' }),
+                    choose('codec', 'Codec', [['', 'default (PCMU)'], ['pcmu', 'PCMU (µ-law)'], ['pcma', 'PCMA (A-law)']]),
+                    choose('answerTone', 'Answer tone', [['', 'default (2225 Hz)'], ['2225', '2225 Hz (Bell)'], ['2100', '2100 Hz (V.25)']])),
+                h('div', { 'data-show': 'sipMode=register', style: 'margin-top:12px' }, check('passEnv', 'keep the password off the command line (MM_SIP_PASSWORD)'))),
+            h('div', { 'data-show': 'link=modem', style: 'margin-top:16px' },
+                h('div', { class: 'fields' },
+                    field('device', 'Modem device', { mono: true, placeholder: 'auto', hint: '"auto" scans the serial ports (see mm_manager -D). e.g. /dev/ttyACM0 or \\\\.\\COM3' }),
+                    field('baud', 'Baud rate', { placeholder: 'default 19200', inputmode: 'numeric' }),
+                    field('init', 'Modem init string', { mono: true, placeholder: 'leave blank for the default' })),
+                h('div', { style: 'margin-top:12px' }, check('noCarrier', 'don\'t watch the modem for carrier loss (-w)'))),
+            h('div', { 'data-show': 'link=replay', style: 'margin-top:16px' },
+                h('div', { class: 'fields' }, field('replay', 'Transcript file', { mono: true, placeholder: 'e.g. install.dlog', hint: 'A file recorded earlier with -l. Handy for testing without a payphone.' })))),
+        h('div', { class: 'card' }, h('h3', null, 'Numbers and codes'),
+            h('div', { class: 'fields' },
+                field('ncc1', 'Primary NCC number', { inputmode: 'numeric', placeholder: 'e.g. 18005551234', hint: 'What the payphone dials to call in. 1–15 digits.' }),
+                field('ncc2', 'Secondary NCC number', { inputmode: 'numeric', placeholder: 'same as primary' }),
+                field('access', 'Craft access code', { inputmode: 'numeric', placeholder: 'default 2727378 (CRASERV)', hint: '7 digits.' }),
+                field('keycard', 'Desk terminal key card', { inputmode: 'numeric', placeholder: 'default 4012888888', hint: 'First 10 digits of the card.' }))),
+        h('div', { class: 'card' }, h('h3', null, 'Tables'),
+            h('div', { class: 'fields' },
+                field('defaultDir', 'Default table folder', { mono: true, placeholder: 'default tables/default' }),
+                field('termDir', 'Terminal table folder', { mono: true, placeholder: 'default tables' })),
+            h('div', { class: 'chips', style: 'margin-top:12px' },
+                check('complete', 'always send every table (-c)'), check('minimal', 'send only the required tables (-s)'),
+                check('rating', 'rating test mode (-r)'))),
+        h('div', { class: 'card' }, h('h3', null, 'Logs and debugging'),
+            h('div', { class: 'fields' },
+                field('log', 'Transcript log', { mono: true, placeholder: 'e.g. session.dlog' }),
+                field('pcap', 'Packet capture', { mono: true, placeholder: 'e.g. session.pcap' }),
+                choose('verbose', 'Detail', [[0, 'quiet'], [1, '-v'], [2, '-vv (shows SIP messages)'], [3, '-vvv']])),
+            h('div', { class: 'chips', style: 'margin-top:12px' },
+                check('udp', 'stream packets to Wireshark on UDP 27273 (-u)'), check('quiet', 'skip the sign-on banner (-q)'))));
+
+    const copyBtn = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+        try { await navigator.clipboard.writeText(out.textContent); toast('copied! paste it into a terminal'); }
+        catch (e) { toast('couldn\'t reach the clipboard; select the command and copy it by hand', 'error'); }
+    } }, 'copy command');
+
+    const side = h('div', { class: 'side' },
+        h('div', { class: 'card raised', 'data-tour': 'command' },
+            h('div', { class: 'overline' }, 'your command line'),
+            h('div', { class: 'radio-row', style: 'margin-bottom:12px' }, radios('shell', [['posix', 'Linux / macOS'], ['windows', 'Windows cmd']])),
+            out, warnList,
+            h('div', { class: 'btns' }, copyBtn,
+                h('button', { class: 'btn link', type: 'button', onclick: () => { Object.assign(mgr, MGR_DEFAULTS); renderManager(); } }, 'reset'))),
+        h('div', { class: 'card' },
+            h('h3', null, 'Made fresh by mm_manager'),
+            h('p', { class: 'section-note' }, 'These tables are built on every download rather than read from files, so the options on the left are how you change them.'),
+            h('ul', { class: 'gen-list' }, GENERATED.map(([id, code, name, how]) => h('li', null,
+                h('div', null, h('span', { class: 'badge paper' }, `${hexId(id)} ${code}`), ' ', h('strong', null, name)),
+                h('div', { class: 'meta' }, how)))),
+            h('p', { class: 'meta', style: 'margin-top:12px' }, 'User interface parameters (0x1e) are built too, but only when there is no mm_table_1e.bin — make one under tables → new table.')));
+
+    form.prepend(tip('Fill in the left side and the command on the right follows along. Blank fields use mm_manager\'s defaults, shown in grey.'));
+    host.append(h('div', { class: 'two-col' }, form, side));
+    refresh();
+}
+
+/* =====================================================================
+ * ROM versions: config/control_rom_versions.csv
+ * ===================================================================== */
+
+const roms = { header: ['CONTROL_ROM_EDITION', 'TERMINAL_TYPE', 'DESCRIPTION', 'REFERENCE', 'REFERENCE2'], rows: [], handle: null,
+    name: 'control_rom_versions.csv', orig: '', q: '' };
+
+const romCsv = () => [roms.header, ...roms.rows].map(r => r.join(',')).join('\n');
+
+function romProblems(r) {
+    const p = [];
+    if (!/^[0-9A-Z]{7}$/.test(r[0])) p.push('edition: 7 letters/digits');
+    if (!/^\d+$/.test(r[1]) || +r[1] > 60) p.push('type: 0–60');
+    if (r.some(c => /[,"\n]/.test(c))) p.push('no commas or quotes (mm_manager splits on commas)');
+    if (r.join(',').length > 250) p.push('line too long: mm_manager reads up to 254 characters');
+    return p;
+}
+
+async function openRoms() {
+    const load = (text, name, handle) => {
+        const rows = parseCSV(text).filter(r => r.some(c => c !== ''));
+        if (!rows.length) { toast('that file is empty', 'error'); return; }
+        roms.header = rows[0];
+        roms.rows = rows.slice(1).map(r => roms.header.map((_, i) => r[i] ?? ''));
+        roms.name = name; roms.handle = handle; roms.orig = romCsv();
+        renderRoms();
+        toast(`${roms.rows.length} ROM versions loaded`);
+    };
+    if ('showOpenFilePicker' in window) {
+        try {
+            const [handle] = await window.showOpenFilePicker({ id: 'mm-config', types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }] });
+            const file = await handle.getFile();
+            load(await file.text(), file.name, handle);
+        } catch (e) { if (e.name !== 'AbortError') toast(`hmm, couldn't open it: ${e.message}`, 'error'); }
+        return;
+    }
+    const input = h('input', { type: 'file', accept: '.csv,text/csv' });
+    input.addEventListener('change', async () => { const file = input.files[0]; if (file) load(await file.text(), file.name, null); });
+    input.click();
+}
+
+async function saveRoms() {
+    const bad = roms.rows.findIndex(r => romProblems(r).length);
+    if (bad >= 0) { toast(`row ${bad + 1} needs fixing first: ${romProblems(roms.rows[bad]).join(', ')}`, 'error'); return; }
+    /* No trailing newline: mm_config.c stops reading at the first failed fgets(). */
+    const data = romCsv();
+    try {
+        if (roms.handle && roms.handle.createWritable) {
+            const w = await roms.handle.createWritable();
+            await w.write(data);
+            await w.close();
+            toast(`saved! ${roms.name}`);
+        } else {
+            download(roms.name, data, 'text/csv');
+            toast(`downloaded ${roms.name} — replace config/${roms.name} with it`, 'info');
+        }
+        roms.orig = data;
+        renderRoms();
+    } catch (e) { toast(`hmm, that didn't save: ${e.message}`, 'error'); }
+}
+
+function renderRoms() {
+    const host = $('#view-roms');
+    host.replaceChildren();
+    const intro = h('div', { class: 'card raised' },
+        h('div', { class: 'ed-head' },
+            h('div', null, h('div', { class: 'overline' }, 'config/control_rom_versions.csv'),
+                h('h1', { class: 'ed-title' }, 'Control ROM versions'),
+                h('p', { class: 'meta', style: 'margin:4px 0 0;max-width:62ch' }, 'mm_manager uses this list to work out the terminal type (and so which tables to send) from the control ROM edition a payphone reports. It is read when mm_manager starts.')),
+            h('div', { class: 'btns' },
+                h('button', { class: 'btn primary', type: 'button', onclick: roms.rows.length ? saveRoms : openRoms }, roms.rows.length ? (roms.handle ? 'save' : 'save (download)') : 'open csv'),
+                roms.rows.length ? h('button', { class: 'btn', type: 'button', onclick: openRoms }, 'open another') : null,
+                roms.rows.length && romCsv() !== roms.orig ? h('span', { class: 'badge tilt' }, 'edited') : null)));
+    host.append(intro);
+    host.append(h('div', { style: 'margin-top:24px' }, tip('When a payphone reports a ROM edition that isn\'t listed, mm_manager can\'t tell its type and falls back to MTR 1.7 tables. Add the edition here with the terminal type of a similar ROM, then restart mm_manager.')));
+    if (!roms.rows.length) {
+        host.append(h('div', { class: 'empty' }, h('div', { class: 'bubble pink' },
+            h('p', null, h('strong', null, 'nothing loaded yet.')),
+            h('p', null, 'Open ', h('code', null, 'config/control_rom_versions.csv'), ' from your mm_manager folder to add a ROM edition that isn\'t recognised yet.'))));
+        return;
+    }
+    const filter = h('input', { class: 'in', type: 'search', placeholder: 'find an edition or description', 'aria-label': 'Filter ROM versions' });
+    filter.value = roms.q;
+    const tbody = h('tbody');
+    const typeInfo = t => /^\d+$/.test(t) && +t <= 60 ? `${TERM_MODELS[TERM_TYPE_MODEL[+t]] || 'unknown'} · ${mtrName(TERM_TYPE_MTR[+t])}` : '—';
+    const rowEls = roms.rows.map((r, ri) => {
+        const info = h('td', { class: 'meta' }, typeInfo(r[1]));
+        const cells = roms.header.map((_, ci) => {
+            const td = h('td', { class: 'edit' });
+            const inp = h('input', { class: 'in' + (ci === 0 ? ' mono' : ''), 'aria-label': `${roms.header[ci]}, row ${ri + 1}`, spellcheck: 'false',
+                style: ci === 2 ? 'min-width:22ch' : ci === 1 ? 'width:6ch' : 'min-width:10ch', maxlength: ci === 0 ? '7' : null });
+            inp.value = r[ci];
+            const check = () => {
+                const p = romProblems(r);
+                td.classList.toggle('bad', p.length > 0 && (ci === 0 ? p.some(x => x.startsWith('edition')) : ci === 1 ? p.some(x => x.startsWith('type')) : /[,"\n]/.test(r[ci])));
+                td.title = p.join(', ');
+            };
+            inp.addEventListener('input', () => {
+                r[ci] = ci === 0 ? inp.value.toUpperCase().trim() : inp.value;
+                if (ci === 0) inp.value = r[0];
+                if (ci === 1) info.textContent = typeInfo(r[1]);
+                check();
+                updateBadge();
+            });
+            check();
+            td.append(inp);
+            return td;
+        });
+        const del = h('button', { class: 'btn small link', type: 'button', 'aria-label': `Delete row ${ri + 1}`, onclick: () => { roms.rows.splice(ri, 1); renderRoms(); } }, 'delete');
+        return h('tr', null, cells[0], cells[1], info, cells.slice(2), h('td', null, del));
+    });
+    const updateBadge = () => {
+        const btns = intro.querySelector('.btns');
+        let badge = btns.querySelector('.badge');
+        if (romCsv() !== roms.orig && !badge) btns.append(h('span', { class: 'badge tilt' }, 'edited'));
+        if (romCsv() === roms.orig && badge) badge.remove();
+    };
+    const applyFilter = () => {
+        const q = roms.q.toLowerCase();
+        rowEls.forEach((tr, i) => { tr.hidden = q && !roms.rows[i].join(' ').toLowerCase().includes(q); });
+    };
+    filter.addEventListener('input', () => { roms.q = filter.value; applyFilter(); });
+    tbody.append(...rowEls);
+    applyFilter();
+    host.append(h('div', { class: 'card', style: 'margin-top:24px' },
+        h('div', { class: 'list-tools' }, filter,
+            h('button', { class: 'btn', type: 'button', onclick: () => {
+                roms.rows.unshift(['', '', '', '', '']);
+                roms.q = '';
+                renderRoms();
+                $('#view-roms tbody input')?.focus();
+            } }, 'add a ROM'),
+            h('span', { class: 'badge paper' }, `${roms.rows.length} editions`)),
+        h('div', { class: 'table-wrap', style: 'max-height:70vh' }, h('table', { class: 'grid' },
+            h('thead', null, h('tr', null, h('th', null, 'edition'), h('th', null, 'type'), h('th', null, 'model · MTR'),
+                h('th', null, 'description'), h('th', null, 'reference'), h('th', null, 'reference 2'), h('th'))), tbody))));
+}
+
+/* =====================================================================
+ * Hints: an "about this table" bubble and a tip for each view
+ * ===================================================================== */
+
+const TABLE_HELP = {
+    FEATRU: { title: 'Feature configuration', what: 'Switches terminal features on and off: card validation, advertising, the clock, coin call overtime, the datajack and rating options.',
+        tips: ['To show your advertising messages, tick "advertising enabled" under Advertising.',
+            'For a 12-hour clock, tick both "date / time display" and "12-hour clock".',
+            'The call screening pointers are entry numbers in the call screening list, so change them together with that list.'] },
+    USERPRM: { title: 'User interface parameters', what: 'Timers for the user interface: how long prompts stay up, timeouts while dialing, coin warnings and bong tones.',
+        tips: ['Most values are in 10 ms steps, so 450 means 4.5 seconds. The note under each field shows the time in seconds.',
+            'The coin warnings are in seconds: how long before a paid coin call runs out the caller is warned.',
+            'Delete this file and mm_manager goes back to its built-in values.'] },
+    ADMESS: { title: 'Advertising messages', what: 'The messages the display cycles through while the phone is idle (and during calls, if that is switched on). 20 messages of 20 characters.',
+        tips: ['Advertising must be switched on in the feature configuration table (0x1a) for these to appear.',
+            'Display time is in 10 ms steps: 200 is 2 seconds.',
+            '"blank before" clears the display before the message appears.'] },
+    PROMPTS: { title: 'Visual prompts', what: 'The text of the terminal\'s own display prompts, one 20-character line each, in the order the firmware uses them.',
+        tips: ['Use "find text" to find a prompt, then edit it in place.',
+            'Language A is usually English and language B the second language.'] },
+    CARD: { title: 'Card table', what: 'Which card numbers the phone accepts, by range of their first digits (the PAN), and how it checks them.',
+        tips: ['PAN ranges are 6 hex digits, e.g. 400000 – 499999 for cards that start with 4.',
+            'The card standard decides which service-code fields apply, so the form changes when you change it.',
+            'Carrier reference links the card range to an entry in the carrier table.'] },
+    CARRIER: { title: 'Carrier table', what: 'The long-distance carriers the phone can route calls to, the prompt shown for each, and how each is dialed.',
+        tips: ['The header picks the default carrier (by reference number) for each kind of call.',
+            'CIC is the 4-digit carrier identification code, e.g. 0288.',
+            'The display prompt is only used when "use specific display prompt" is ticked.'] },
+    CALLSCRN: { title: 'Call screening list', what: 'Numbers that get special treatment: free calls (911, 800 numbers), blocked numbers, operator and directory assistance.',
+        tips: ['In a number, F matches any single digit and B links to another entry.',
+            'Tick "free call" for numbers that cost nothing to call.',
+            'The feature configuration table refers to operator and AOS entries here by entry number.'] },
+    RDLIST: { title: 'Repertory dialer list', what: 'The speed-dial list: numbers callers can choose from the display instead of dialing.',
+        tips: ['Each entry has two display lines of 20 characters.', 'Clear an entry to take it off the list.'] },
+    SERVLEV: { title: 'Limited service levels', what: 'Up to five times of day when service is limited, e.g. emergency calls only overnight.',
+        tips: ['Start time and duration are HH:MM, in the terminal\'s local time.', 'Set an entry to "No restriction" to switch it off.'] },
+    RATE: { title: 'Rate table', what: 'Prices: an initial charge for an initial period, then an additional charge for each additional period.',
+        tips: ['Charges are in dollars. Periods are in seconds, or unlimited.',
+            'The international rating table refers to entries 28 and up.'] },
+    RATEINT: { title: 'International rating', what: 'How calls to each country code are rated: blocked, rated by the manager, or priced with a rate table entry.',
+        tips: ['Rating 1 blocks the country. 2–63 use rate table entry 28 + n.', 'Countries that aren\'t listed use the default rate in the header.'] },
+    LCD: { title: 'Local call determination', what: 'For one area code (NPA), whether a call to each exchange (NXX) is local, toll, or invalid.',
+        tips: ['Set the area code first, then paint exchanges with a value.', 'Use "set a range" for long runs of exchanges.',
+            'generate_lcd_lata.py (US) and generate_lcd_lir.py (Canada) build these tables from public data.'] },
+    RATENPA: { title: 'NPA set-based rating', what: 'How the phone treats each area code: domestic (then checked against the LCD tables), foreign, unassigned or not available.',
+        tips: ['generate_npa.py builds this table from the NANPA area code list.', 'Paint area codes, or use "set a range".'] },
+    COINVL: { title: 'Coin validation', what: 'What each coin is worth, how much room it takes, and when the cash box counts as full.',
+        tips: ['The terminal raises an alarm when the cash box goes past the thresholds.'] },
+    SMCARD: { title: 'Smart card parameters', what: 'Smart card (chip card) keys, unit multipliers, rebates and surcharges.',
+        tips: ['Leave this table as it is unless you use smart cards.'] },
+    MODEM: { title: 'Modem parameters', what: 'Settings for the terminal\'s own modem. The layout is not documented.',
+        tips: ['Copy this table from a working set rather than editing it.'] },
+    DIALRL: { title: 'Dialing rules', what: 'The numbering plan: how the terminal classifies and formats the digits a caller dials.',
+        tips: ['The layout is not documented, so only change bytes you understand.'] },
+    SPARE: { title: 'Spare table', what: 'Required by V1.3 control boards, unused by V1.0.', tips: ['Keep the copy that ships in tables/default.'] },
+};
+
+const VIEW_TIPS = {
+    struct: 'Every change goes into this tab\'s copy of the file straight away. Press save when you\'re done, or revert to throw your changes away.',
+    list: 'Click a row (or Tab to it and press Enter) to edit it in the form below. "add entry" jumps to the first free one; copy and paste move a whole entry.',
+    prompts: 'Type straight into a prompt. Use "find text" to search all of them.',
+    grid: 'Pick a value, then click exchanges to set them. With a mouse or pen you can drag across many at once.',
+    bytes: 'Type two hex digits per byte and the cursor moves on by itself. Hover a byte to see which field it belongs to.',
+};
+
+let hintsOn = safeStorage(s => s.getItem('mmTableEditor.hints'), null) !== 'off';
+
+const TIP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7l-5 4v-4H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><circle cx="8" cy="10.5" r="1.4" fill="var(--paper)"/><circle cx="12" cy="10.5" r="1.4" fill="var(--paper)"/><circle cx="16" cy="10.5" r="1.4" fill="var(--paper)"/></svg>';
+
+function tip(...kids) {
+    return h('div', { class: 'tip' }, h('span', { class: 'tip-icon', html: TIP_ICON }), h('div', null, h('strong', null, 'hint: '), ...kids));
+}
+
+function aboutTable(d) {
+    const help = TABLE_HELP[d.code];
+    if (!help) return null;
+    return h('div', { class: 'bubble teal about' },
+        h('p', null, h('strong', null, 'what it does: '), help.what),
+        help.tips.length ? h('ul', null, help.tips.map(t => h('li', null, t))) : null);
+}
+
+function applyHints() {
+    document.body.classList.toggle('no-hints', !hintsOn);
+    const btn = $('#hints-btn');
+    btn.textContent = `hints: ${hintsOn ? 'on' : 'off'}`;
+    btn.setAttribute('aria-pressed', hintsOn ? 'true' : 'false');
+    safeStorage(s => s.setItem('mmTableEditor.hints', hintsOn ? 'on' : 'off'));
+}
+
+/* =====================================================================
+ * Practice tables, used by the tour (copies of tables/default)
+ * ===================================================================== */
+
+const PRACTICE = {
+    0x1a: 'AgEFDwABAF8PMQACDwAAAAAAAAAADwADCAgABwoAeAAFCgEteAAAAAEFGQAZAA4AAA4FAwAA9AHIAOgDMgAyACwBAAUAAAA=',
+    0x1d: 'WAICACAgTG9jYWwgY29pbiBjYWxscyAgyAAAACAgICAgIDUwLWNlbnRzICAgICAgAABDAENvaW4gY2FsbHMgYW55d2hlcmUgAAADAGluIHRoZSBVUywganVzdCAgICAglgAFACQxLjAwIGZvciA0LW1pbnV0ZXMgZAABACAgICAgTm8gQ2hhbmdlPyAgICAgAABDAERpYWwgJzAnLi4uICAgICAgICAgAAAFACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAADAFRoYW5rIHlvdSBmb3IgdXNpbmcgyAADACAgWW91ciB2ZXJ5IG93biAgICAgyAAFACAgTm9ydGVsIE1pbGxlbm5pdW0hAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAg',
+    0x88: 'QI4gAAMIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAMAAAAAIAAAAAAAAAAAAAAAAAAAAAAwwyAACAIIAAAAAAAAACAgAAAAAAAAAACAAAMAAAAAAAAAAAAAAwAAAAAAAAADAAAADAIDgAAAAACIAAAAAwAiACAPwIAqCACCAMAICyAACAAAAAAAAAAAAAoCAACKCAAAAAADwA/AAAAgAAAgigqAgAAAAAAAAAAAAAAgAAAjAAAAAAAAAAAADAAPAADAAAAAAAAAAA==',
+};
+const fromBase64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const practiceFile = id => state.files.find(f => f.practice && f.tableId === id);
+
+function loadPractice() {
+    for (const [id, data] of Object.entries(PRACTICE)) {
+        const f = addFile({ path: `practice/${tableFileName(+id)}`, data: fromBase64(data) });
+        Object.assign(f, { practice: true, practiceSaved: false, view: null, sel: null, brush: null });
+    }
+    if (!state.current) state.current = practiceFile(0x1a);
+    renderAll();
+}
+
+function removePractice() {
+    state.files = state.files.filter(f => !f.practice);
+    if (!state.files.includes(state.current)) state.current = state.files[0] || null;
+    renderAll();
+}
+
+function selectFile(f) {
+    if (!f) return;
+    state.current = f;
+    renderSidebar();
+    renderEditor();
+}
+
+/* =====================================================================
+ * Help tab
+ * ===================================================================== */
+
+/* table_list_* in src/mm_manager.c */
+const FIRMWARE_TABLES = [
+    ['MTR 2.x', [0x15, 0x1a, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x3e, 0x48, 0x49, 0x55, 0x56, 0x5c, 0x5d, 0x86, 0x87,
+        ...range(14).map(i => 0x88 + i), 0x96, 0x97, 0xa0, 0xa1]],
+    ['MTR 1.20', [0x15, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x3e, 0x49, 0x5c, 0x5d, 0x86, 0x87,
+        ...range(14).map(i => 0x88 + i), 0x96, 0x97, 0xa0, 0xa1]],
+    ['MTR 1.9 – 1.13', [0x15, 0x16, 0x17, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x3e, 0x49, 0x5c, 0x5d,
+        ...range(7).map(i => 0x65 + i)]],
+    ['MTR 1.6 – 1.7', [0x15, 0x16, 0x17, 0x18, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x3e, 0x49,
+        ...range(8).map(i => 0x4a + i), 0x5a, 0x5b]],
+    ['MTR 1.7 international', [0x15, 0x16, 0x17, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x18, 0x3e, 0x49,
+        ...range(7).map(i => 0x4a + i)]],
+];
+
+const GLOSSARY = [
+    ['NCC', 'The Millennium Manager, i.e. mm_manager. The NCC number is the number the payphone dials to reach it.'],
+    ['NPA / NXX', 'Area code / exchange: the first three and the next three digits of a North American phone number.'],
+    ['LATA', 'A local access and transport area. Calls inside one are intra-LATA, calls between them inter-LATA.'],
+    ['LCD', 'Local call determination: tables that say which exchanges are local or toll from this payphone.'],
+    ['MTR', 'The terminal\'s firmware generation. It decides which tables mm_manager sends.'],
+    ['Terminal ID', 'The payphone\'s own 10-digit phone number, used as the name of its terminal-specific table folder.'],
+    ['Craft menu', 'The installer menu on the payphone, reached by dialing the access code (default CRASERV, 2727378).'],
+    ['CIC', 'Carrier identification code: the 4-digit number that identifies a long-distance carrier.'],
+    ['PIC', 'Presubscribed interexchange carrier: the default long-distance carrier for a line.'],
+    ['FGB', 'Feature group B: carrier access through numbers like 950-XXXX or 1-800.'],
+    ['AOS', 'Automated (alternate) operator services.'],
+    ['ACCS', 'Automated calling card service: card validation by the network instead of by the manager.'],
+    ['LMS', 'Local measured service: local calls charged by time.'],
+    ['MCE', 'Manual card entry: a card number typed on the keypad instead of swiped.'],
+    ['CDR', 'Call detail record: the terminal\'s record of a call, uploaded to the manager.'],
+    ['IAS', 'Answer supervision: how the payphone knows a call was answered, by line polarity reversal.'],
+    ['PAN', 'Primary account number: the number on a card.'],
+    ['VFD', 'The payphone\'s vacuum fluorescent display: 2 lines of 20 characters.'],
+];
+
+function renderHelp() {
+    const host = $('#view-help');
+    host.replaceChildren();
+    const openId = id => {
+        const f = state.files.find(x => x.tableId === id && x.folder === 'default') || state.files.find(x => x.tableId === id);
+        if (f) { showView('tables'); selectFile(f); }
+    };
+    const chip = id => {
+        const gen = GENERATED.find(g => g[0] === id);
+        const d = DEFS[id];
+        const label = `${hexId(id)} ${gen ? gen[1] : d ? d.code : ''}`;
+        const open = !gen && state.files.some(x => x.tableId === id);
+        if (open) return h('button', { class: 'badge pink chip-btn', type: 'button', title: `open ${d ? d.name : label}`, onclick: () => openId(id) }, label);
+        return h('span', { class: 'badge paper' + (gen ? ' gen' : ''), title: gen ? `${gen[2]}: made by mm_manager` : (d ? d.name : '') }, label);
+    };
+    const section = (id, title, ...body) => h('section', { class: 'card', id: 'help-' + id, 'aria-labelledby': 'help-h-' + id },
+        h('h2', { id: 'help-h-' + id }, title), ...body);
+    const codes = Object.keys(TABLE_HELP);
+
+    const nav = h('nav', { class: 'card help-nav', 'aria-label': 'Help topics' },
+        h('div', { class: 'overline' }, 'on this page'),
+        h('ul', null, [['start', 'start here'], ['where', 'where tables live'], ['firmware', 'tables for your phone'],
+            ['guide', 'table guide'], ['generated', 'made by mm_manager'], ['safe', 'staying safe'], ['keys', 'keys and tricks'], ['glossary', 'glossary']]
+            .map(([id, label]) => h('li', null, h('a', { href: '#help-' + id, onclick: e => {
+                e.preventDefault();
+                $('#help-' + id).scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+            } }, label)))),
+        h('div', { class: 'btns', style: 'margin-top:16px' },
+            h('button', { class: 'btn primary', type: 'button', onclick: startTour }, 'take the tour'),
+            h('button', { class: 'btn small', type: 'button', onclick: showWelcome }, 'show the welcome')));
+
+    const body = h('div', { class: 'sections' },
+        section('start', 'start here',
+            h('ol', { class: 'steps' },
+                h('li', null, h('strong', null, 'Open your tables. '), 'Press ', h('em', null, 'open folder'), ' and choose the ', h('code', null, 'tables/'),
+                    ' folder next to mm_manager (the one with ', h('code', null, 'default/'), ' inside). You can also open single ', h('code', null, 'mm_table_XX.bin'),
+                    ' files, or drop them on the page.'),
+                h('li', null, h('strong', null, 'Pick a table. '), 'The list shows a short code and a plain name for each. The table guide below says what each one does.'),
+                h('li', null, h('strong', null, 'Change it. '), 'Notes under each field give the units and the allowed range. A field with a dashed pink border isn\'t stored until you fix it.'),
+                h('li', null, h('strong', null, 'Save. '), 'In Chrome and Edge, save writes the file back in place. Other browsers download it; copy it into the same folder.'),
+                h('li', null, h('strong', null, 'Let the payphone pick it up. '), 'mm_manager sends tables when the terminal calls in for them. To get them sooner, use ',
+                    h('em', null, 'force download'), ' in the payphone\'s craft menu. mm_manager then sends the tables that changed (all of them with ', h('code', null, '-c'), ').'))),
+        section('where', 'where tables live',
+            h('p', null, 'For each table, mm_manager uses the first file it finds in:'),
+            h('ol', null,
+                h('li', null, h('code', null, 'tables/<terminal number>/'), ' — just for one payphone, named after its 10-digit number'),
+                h('li', null, h('code', null, 'tables/<model>/'), ' — ', h('code', null, 'multipay'), ', ', h('code', null, 'card_only'), ', ', h('code', null, 'desk'),
+                    ', ', h('code', null, 'coin'), ' or ', h('code', null, 'inmate')),
+                h('li', null, h('code', null, 'tables/default/'), ' — everything else')),
+            h('p', null, 'So to give one payphone its own advertising messages, open its table and press ', h('em', null, 'copy for a terminal'),
+                '. The folders can be changed with ', h('code', null, '-t'), ' and ', h('code', null, '-d'), ' in manager settings.')),
+        section('firmware', 'tables for your phone',
+            h('p', null, 'mm_manager sends a different set of tables to each firmware generation (MTR). It prints the terminal type and firmware when a payphone calls in. Coin-only phones skip the card tables; card-only and desk phones skip coin validation; ',
+                h('code', null, '-s'), ' sends only the required tables.'),
+            h('div', { class: 'table-wrap', style: 'max-height:none' }, h('table', { class: 'grid fw' },
+                h('thead', null, h('tr', null, h('th', null, 'firmware'), h('th', null, 'tables sent'))),
+                h('tbody', null, FIRMWARE_TABLES.map(([name, ids]) => h('tr', null, h('td', { class: 'idx' }, name),
+                    h('td', null, h('div', { class: 'chips' }, ids.map(chip)))))))),
+            h('p', { class: 'meta', style: 'margin-top:12px' }, 'Pink chips are tables you have open: click one to edit it. Dashed chips are made by mm_manager. 0x1e is also made by mm_manager when there is no file for it.')),
+        section('guide', 'table guide',
+            h('div', { class: 'guide' }, codes.map(code => {
+                const help = TABLE_HELP[code];
+                const ids = Object.values(DEFS).filter(d => d.code === code).map(d => d.id);
+                return h('details', null,
+                    h('summary', null, h('span', { class: 'badge pink' }, code), h('span', null, help.title),
+                        h('span', { class: 'meta' }, ids.length > 3 ? `${hexId(ids[0])} – ${hexId(ids[ids.length - 1])}` : ids.map(hexId).join(', '))),
+                    h('p', null, help.what),
+                    h('ul', null, help.tips.map(t => h('li', null, t))));
+            }))),
+        section('generated', 'made by mm_manager',
+            h('p', null, 'These tables are built on every download instead of being read from files, so you change them with command-line options in ',
+                h('a', { href: '#', onclick: e => { e.preventDefault(); showView('manager'); } }, 'manager settings'), '.'),
+            h('ul', { class: 'gen-list' }, GENERATED.map(([id, code, name, how]) => h('li', null,
+                h('div', null, h('span', { class: 'badge paper' }, `${hexId(id)} ${code}`), ' ', h('strong', null, name)), h('div', { class: 'meta' }, how))))),
+        section('safe', 'staying safe',
+            h('ul', null,
+                h('li', null, 'Keep a copy of your ', h('code', null, 'tables/'), ' folder before big changes. If you cloned the repository, git already keeps one.'),
+                h('li', null, h('em', null, 'revert'), ' throws away unsaved changes to a table. Closing the tab warns you about unsaved changes.'),
+                h('li', null, 'A wrong table can make the payphone raise a table alarm or go out of service. Change one thing at a time and test.'),
+                h('li', null, 'A file with the wrong size opens as bytes only, with an offer to pad or trim it.'))),
+        section('keys', 'keys and tricks',
+            h('ul', null,
+                h('li', null, 'Lists: Tab to a row and press Enter or Space to edit it. Use the filter to find entries.'),
+                h('li', null, 'Bytes: typing two hex digits moves to the next byte.'),
+                h('li', null, 'Maps: drag with a mouse or pen to paint; on touch screens, tap each exchange or use "set a range".'),
+                h('li', null, 'Copy an entry in one table and paste it into another table of the same kind.'),
+                h('li', null, 'Turn hints off with the "hints" button at the top once you know your way around.'),
+                h('li', null, 'During the tour, Esc ends it.'))),
+        section('glossary', 'glossary',
+            h('dl', { class: 'glossary' }, GLOSSARY.map(([t, d]) => [h('dt', null, t), h('dd', null, d)]))));
+
+    host.append(h('div', { class: 'help-grid' }, h('div', { class: 'side' }, nav), body));
+}
+
+/* =====================================================================
+ * Onboarding
+ * ===================================================================== */
+
+function showWelcome() {
+    const dlg = $('#dialog');
+    safeStorage(s => s.setItem('mmTableEditor.onboarded', '1'));
+    const go = fn => () => { dlg.close(); if (fn) fn(); };
+    dlg.replaceChildren(h('div', { class: 'welcome' },
+        h('div', { class: 'overline' }, 'welcome'),
+        h('h2', null, 'hi! let\'s get your payphone talking.'),
+        h('p', null, 'This page edits the tables mm_manager sends to a Nortel Millennium payphone: the messages on its display, prices, free numbers, cards and more. It also builds the command that starts mm_manager.'),
+        h('ol', { class: 'steps compact' },
+            h('li', null, 'Open your ', h('code', null, 'tables/'), ' folder, or a few ', h('code', null, '.bin'), ' files.'),
+            h('li', null, 'Pick a table and change it with the form.'),
+            h('li', null, 'Save. The payphone gets the new table the next time it downloads.')),
+        h('p', { class: 'meta' }, 'Nothing leaves your computer. New here? The tour takes about three minutes and uses practice tables.'),
+        h('div', { class: 'btns', style: 'justify-content:flex-start' },
+            h('button', { class: 'btn primary', type: 'button', onclick: go(startTour) }, 'show me around'),
+            h('button', { class: 'btn', type: 'button', onclick: go(() => { showView('tables'); openFolder(); }) }, 'open my tables'),
+            h('button', { class: 'btn link', type: 'button', onclick: go(() => showView('help')) }, 'read the guide'),
+            h('button', { class: 'btn link', type: 'button', onclick: go(null) }, 'skip'))));
+    dlg.showModal();
+    dlg.querySelector('.btn.primary').focus();
+}
+
+/* =====================================================================
+ * Live tutorial: spotlights real controls and waits for the user
+ * ===================================================================== */
+
+const q = sel => document.querySelector(sel);
+const isCurrent = id => !!state.current && state.current === practiceFile(id);
+const setInput = (el, value, type = 'input') => { if (!el) return; el.value = value; el.dispatchEvent(new Event(type, { bubbles: true })); };
+const ensureFile = (id, extra = {}) => () => {
+    showView('tables');
+    const f = practiceFile(id);
+    if (!f) return;
+    let rerender = state.current !== f;
+    for (const [k, v] of Object.entries(extra)) if (f[k] !== v) { f[k] = v; rerender = true; }
+    state.current = f;
+    if (rerender) renderAll();
+};
+const ADMESS_AT = (i, key) => i * ADMESS_ENTRY.size + ADMESS_ENTRY.map[key].o;
+
+const TOUR_STEPS = [
+    { title: 'welcome to the tour', body: 'We\'ve opened three practice tables in a practice/ folder. Try anything: they only live in this tab, and saving them doesn\'t write a file. The page still works while the tour runs, so you\'ll press the real buttons.' },
+    { before: () => showView('tables'), target: () => q('#file-list'), title: 'your tables',
+        body: 'Open tables are listed here, grouped by folder. With your real tables/ folder you\'d see default/, the model folders and a folder for each terminal number.' },
+    { before: () => showView('tables'), target: () => q('.file-item[data-path="practice/mm_table_1d.bin"]'), title: 'pick a table',
+        body: 'Each table has a short code, like ADMESS, and a plain name.', task: 'click "Advertising messages".',
+        check: () => isCurrent(0x1d), auto: true, doIt: () => selectFile(practiceFile(0x1d)) },
+    { before: ensureFile(0x1d), target: () => q('#editor .card.raised'), title: 'the table header',
+        body: 'The table ID and file name, and the buttons to save, download or copy it for one terminal. An "edited" sticker appears as soon as you change something.' },
+    { before: ensureFile(0x1d, { view: 'fields' }), target: () => q('[data-tour="entries"]'), title: 'entries',
+        body: 'List tables have one row per entry. The form below the list edits the row you pick.', task: 'click the row for message 3.',
+        check: () => isCurrent(0x1d) && state.current.sel === 3, auto: true, doIt: () => { state.current.sel = 3; renderEditor(); } },
+    { before: ensureFile(0x1d, { view: 'fields', sel: 3 }), snap: () => readText(practiceFile(0x1d).bytes, ADMESS_AT(3, 'message_text'), 20),
+        target: () => q('[data-key="message_text"] input'), title: 'change the words',
+        body: 'A message holds up to 20 characters, the width of the payphone\'s display.', task: 'type a new message, e.g. "say something!".',
+        check: snap => readText(practiceFile(0x1d).bytes, ADMESS_AT(3, 'message_text'), 20) !== snap,
+        doIt: () => setInput(q('[data-key="message_text"] input'), 'say something!') },
+    { before: ensureFile(0x1d, { view: 'fields', sel: 3 }), target: () => q('[data-tour="preview"]'), title: 'preview',
+        body: 'Roughly how the message looks on the payphone, effect included.' },
+    { before: ensureFile(0x1d, { view: 'fields', sel: 3 }), snap: () => practiceFile(0x1d).bytes[ADMESS_AT(3, 'display_attr')],
+        target: () => q('[data-key="display_attr"]'), title: 'pick an effect',
+        body: 'Messages can stay still, flash or scroll. "blank before" clears the display first.', task: 'choose a different effect.',
+        check: snap => practiceFile(0x1d).bytes[ADMESS_AT(3, 'display_attr')] !== snap, auto: true,
+        doIt: () => { const sel = q('[data-key="display_attr"] select'); setInput(sel, sel.value === '3' ? '1' : '3', 'change'); } },
+    { before: ensureFile(0x1d), target: () => q('#ed-dirty'), title: 'edited, not saved',
+        body: 'Your change lives in this tab until you save. A ● in the list marks every table with unsaved changes, and "save all changes" saves them together.' },
+    { before: ensureFile(0x1d), target: () => q('#editor .subtabs [data-view="bytes"]'), title: 'under the hood',
+        body: 'Every table can also be edited byte by byte: handy for tables nobody has documented yet.', task: 'click "bytes".',
+        check: () => isCurrent(0x1d) && state.current.view === 'bytes', auto: true, doIt: () => { state.current.view = 'bytes'; renderEditor(); } },
+    { before: ensureFile(0x1d, { view: 'bytes' }), target: () => q('[data-tour="hex"]'), title: 'bytes',
+        body: 'Your edits are highlighted in yellow. Hover over or focus a byte to see which field it belongs to.' },
+    { before: () => showView('tables'), target: () => q('.file-item[data-path="practice/mm_table_88.bin"]'), title: 'maps',
+        body: 'Local call tables are easier to read as a map.', task: 'open "Double-compressed LCD 1".',
+        check: () => isCurrent(0x88), auto: true, doIt: () => selectFile(practiceFile(0x88)) },
+    { before: ensureFile(0x88, { view: 'fields' }), target: () => q('[data-tour="palette"]'), title: 'pick a value',
+        body: 'Each exchange in this area code is local, toll or invalid. First pick what to paint with.', task: 'choose "intra-LATA toll".',
+        check: () => isCurrent(0x88) && state.current.brush === 2, auto: true, doIt: () => q('[data-tour="palette"] button:nth-child(3)').click() },
+    { before: ensureFile(0x88, { view: 'fields' }), snap: () => practiceFile(0x88).bytes.slice(), target: () => q('.block'), title: 'paint',
+        body: 'Click an exchange to set it. With a mouse you can drag across many; "set a range" further down sets long runs exactly.', task: 'click a few exchanges.',
+        check: snap => practiceFile(0x88).bytes.some((v, i) => v !== snap[i]),
+        doIt: () => { for (const n of [200, 201, 202]) q(`.cell[data-n="${n}"]`).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })); } },
+    { before: ensureFile(0x88), target: () => q('[data-tour="save"]'), title: 'save',
+        body: 'With a real folder open in Chrome or Edge, save writes the file back in place; elsewhere it downloads the file for you to copy into tables/. This one is practice, so nothing is written.',
+        task: 'press save.', check: () => isCurrent(0x88) && state.current.practiceSaved, auto: true, doIt: () => saveFile(state.current) },
+    { target: () => q('.tabs .tab[data-view="manager"]'), title: 'starting mm_manager',
+        body: 'Some settings aren\'t in table files: they are options on mm_manager\'s command line.', task: 'open "manager settings".',
+        check: () => state.view === 'manager', auto: true, doIt: () => showView('manager') },
+    { before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-mgr="ncc1"]'), title: 'the number to call',
+        body: 'The primary NCC number is what the payphone dials to reach this manager. mm_manager writes it into the terminal on every download. Your own settings come back when the tour ends.',
+        task: 'type a number, e.g. 18005551234.', check: () => /^\d{1,15}$/.test(mgr.ncc1 || ''),
+        doIt: () => setInput(q('[data-mgr="ncc1"] input'), '18005551234') },
+    { before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-tour="command"]'), title: 'your command',
+        body: 'This updates as you type. Copy it and run it from the folder that holds mm_manager and tables/. Anything missing is listed under it.' },
+    { target: () => q('.tabs .tab[data-view="help"]'), title: 'that\'s the tour!',
+        body: 'The help tab has the full guide: which tables each firmware gets, what every table does, and a glossary. The dashed hints and table notes can be switched off with "hints" at the top.', last: true },
+];
+
+const tour = { i: -1, timer: null, done: false, snap: null, autoTimer: null, mgrBefore: null };
+
+function startTour() {
+    const dlg = $('#dialog');
+    if (dlg.open) dlg.close();
+    tour.mgrBefore = { ...mgr };
+    loadPractice();
+    $('#tour').hidden = false;
+    clearInterval(tour.timer);
+    tour.timer = setInterval(tourTick, 250);
+    window.addEventListener('resize', placeTour);
+    window.addEventListener('scroll', placeTour, true);
+    document.addEventListener('keydown', tourKeys);
+    goStep(0);
+}
+
+function endTour(keepPractice = true) {
+    clearInterval(tour.timer);
+    clearTimeout(tour.autoTimer);
+    tour.i = -1;
+    $('#tour').hidden = true;
+    window.removeEventListener('resize', placeTour);
+    window.removeEventListener('scroll', placeTour, true);
+    document.removeEventListener('keydown', tourKeys);
+    if (tour.mgrBefore) {
+        Object.assign(mgr, tour.mgrBefore);
+        saveMgr();
+        tour.mgrBefore = null;
+        if (state.view === 'manager') renderManager();
+    }
+    if (!keepPractice) removePractice();
+    safeStorage(s => s.setItem('mmTableEditor.onboarded', '1'));
+}
+
+function tourKeys(e) {
+    if (e.key === 'Escape' && !$('#dialog').open) { e.preventDefault(); endTour(true); toast('tour ended — restart it any time from the top of the page', 'info'); }
+}
+
+function goStep(i) {
+    clearTimeout(tour.autoTimer);
+    tour.i = Math.max(0, Math.min(TOUR_STEPS.length - 1, i));
+    const step = TOUR_STEPS[tour.i];
+    if (step.before) step.before();
+    tour.snap = step.snap ? step.snap() : null;
+    tour.done = !step.check || step.check(tour.snap);
+    const el = step.target && step.target();
+    if (el) {
+        /* Keep the target in the middle of the screen so the card fits above or below it. */
+        const r = el.getBoundingClientRect(), H = window.innerHeight;
+        if (r.top < 80 || r.bottom > H * 0.62) {
+            el.scrollIntoView({ block: r.height > H * 0.5 ? 'start' : 'center',
+                behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        }
+    }
+    drawTourCard(true);
+    placeTour();
+}
+
+function drawTourCard(fresh) {
+    const step = TOUR_STEPS[tour.i];
+    const card = q('.tour-card');
+    const next = () => goStep(tour.i + 1);
+    const status = step.check
+        ? h('p', { class: 'tour-status' + (tour.done ? ' done' : '') }, tour.done ? 'nice one!' : `your turn: ${step.task}`)
+        : null;
+    const buttons = step.last
+        ? [h('button', { class: 'btn primary', type: 'button', onclick: () => endTour(true) }, 'keep the practice tables'),
+            h('button', { class: 'btn', type: 'button', onclick: () => endTour(false) }, 'remove them')]
+        : [h('button', { class: 'btn primary', type: 'button', disabled: !tour.done, onclick: next }, tour.i === 0 ? 'let\'s go' : 'next'),
+            step.doIt && !tour.done ? h('button', { class: 'btn small', type: 'button', onclick: () => step.doIt() }, 'do it for me') : null];
+    card.replaceChildren(
+        h('div', { 'aria-live': 'polite' },
+            h('div', { class: 'overline' }, `tour · ${tour.i + 1} of ${TOUR_STEPS.length}`),
+            h('h2', { id: 'tour-title', tabindex: '-1' }, step.title),
+            h('p', null, step.body),
+            status),
+        h('div', { class: 'btns' }, buttons,
+            tour.i > 0 && !step.last ? h('button', { class: 'btn link', type: 'button', onclick: () => goStep(tour.i - 1) }, 'back') : null,
+            !step.last ? h('button', { class: 'btn link', type: 'button', onclick: () => endTour(true) }, 'end tour') : null));
+    /* Leave focus alone when the user has something to do on the page. */
+    if (fresh && (!step.check || tour.done)) q('#tour-title').focus({ preventScroll: true });
+}
+
+function tourTick() {
+    if (tour.i < 0) return;
+    const step = TOUR_STEPS[tour.i];
+    if (step.check && !tour.done && step.check(tour.snap)) {
+        tour.done = true;
+        drawTourCard(false);
+        if (step.auto) tour.autoTimer = setTimeout(() => goStep(tour.i + 1), 900);
+    }
+    placeTour();
+}
+
+function placeTour() {
+    if (tour.i < 0) return;
+    const step = TOUR_STEPS[tour.i];
+    const ring = q('.tour-ring'), card = q('.tour-card');
+    const W = window.innerWidth, H = window.innerHeight;
+    const el = step.target && step.target();
+    const r = el && el.getClientRects().length ? el.getBoundingClientRect() : null;
+    const cw = card.offsetWidth, ch = card.offsetHeight;
+    if (!r) {
+        Object.assign(ring.style, { left: W / 2 + 'px', top: H / 2 + 'px', width: '0px', height: '0px' });
+        ring.classList.add('none');
+        Object.assign(card.style, { left: Math.max(16, (W - cw) / 2) + 'px', top: Math.max(16, (H - ch) / 2) + 'px' });
+        card.dataset.side = 'none';
+        return;
+    }
+    const pad = 6;
+    ring.classList.remove('none');
+    Object.assign(ring.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px' });
+    let top = r.bottom + pad + 24, side = 'below';
+    if (top + ch > H - 16) { top = r.top - pad - 24 - ch; side = 'above'; }
+    if (top < 16) { top = Math.max(16, H - ch - 16); side = 'none'; }
+    const left = Math.min(Math.max(16, r.left), Math.max(16, W - cw - 16));
+    Object.assign(card.style, { left: left + 'px', top: top + 'px' });
+    card.dataset.side = side;
+    card.style.setProperty('--tail-x', Math.min(Math.max(24, r.left + r.width / 2 - left - 16), cw - 56) + 'px');
+}
+
+/* =====================================================================
+ * App shell
+ * ===================================================================== */
+
+function renderAll() {
+    renderSidebar();
+    renderEditor();
+}
+
+function showView(view) {
+    state.view = view;
+    document.querySelectorAll('.tabs .tab').forEach(t => t.setAttribute('aria-selected', t.dataset.view === view ? 'true' : 'false'));
+    for (const v of ['tables', 'manager', 'roms', 'help']) $('#view-' + v).hidden = v !== view;
+    if (view === 'manager') renderManager();
+    if (view === 'roms') renderRoms();
+    if (view === 'help') renderHelp();
+    safeStorage(s => s.setItem('mmTableEditor.view', view));
+}
+
+function applyTheme(t) {
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t);
+    $('#theme-btn').textContent = `theme: ${t}`;
+    safeStorage(s => s.setItem('mmTableEditor.theme', t));
+}
+
+function init() {
+    document.querySelectorAll('.tabs .tab').forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
+    $('#open-folder-btn').addEventListener('click', openFolder);
+    $('#open-files-btn').addEventListener('click', openFiles);
+    $('#new-table-btn').addEventListener('click', newTableDialog);
+    $('#save-all-btn').addEventListener('click', saveAll);
+    $('#file-input').addEventListener('change', async e => {
+        await readPicked(e.target.files, false);
+        state.current = state.files[state.files.length - 1] || state.current;
+        e.target.value = '';
+        renderAll();
+    });
+    $('#dir-input').addEventListener('change', async e => {
+        state.files = []; state.root = null;
+        state.rootName = e.target.files[0] ? (e.target.files[0].webkitRelativePath || '').split('/')[0] : '';
+        await readPicked([...e.target.files].filter(x => /mm_table_[0-9a-f]{2}\.bin$/i.test(x.name)), true);
+        state.current = state.files[0] || null;
+        e.target.value = '';
+        renderAll();
+    });
+
+    document.addEventListener('dragover', e => { e.preventDefault(); });
+    document.addEventListener('drop', async e => {
+        e.preventDefault();
+        if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+        await readPicked(e.dataTransfer.files, false);
+        state.current = state.files[state.files.length - 1] || state.current;
+        showView('tables');
+        renderAll();
+    });
+    window.addEventListener('beforeunload', e => {
+        if (state.files.some(f => !f.practice && isDirty(f)) || (roms.rows.length && romCsv() !== roms.orig)) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    const themes = ['auto', 'light', 'dark'];
+    let theme = safeStorage(s => s.getItem('mmTableEditor.theme'), null) || 'auto';
+    if (!themes.includes(theme)) theme = 'auto';
+    applyTheme(theme);
+    $('#theme-btn').addEventListener('click', () => { theme = themes[(themes.indexOf(theme) + 1) % themes.length]; applyTheme(theme); });
+
+    $('#tour-btn').addEventListener('click', startTour);
+    $('#hints-btn').addEventListener('click', () => {
+        hintsOn = !hintsOn;
+        applyHints();
+        toast(hintsOn ? 'hints are back on' : 'hints off — turn them back on at the top, or find everything in help', 'info');
+    });
+    applyHints();
+
+    if (!fsAccess) $('#open-folder-btn').title = 'This browser opens folders read-only; saving downloads the files.';
+    renderAll();
+    const view = safeStorage(s => s.getItem('mmTableEditor.view'), null);
+    showView(['tables', 'manager', 'roms', 'help'].includes(view) ? view : 'tables');
+    if (!safeStorage(s => s.getItem('mmTableEditor.onboarded'), '1')) showWelcome();
+}
+
+init();
+</script>
+</body>
+</html>
