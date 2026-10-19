@@ -30,6 +30,7 @@
 #include <sys/stat.h>
 
 #include "mm_manager.h"
+#include "mm_detect.h"
 #include "mm_serial.h"
 #include "mm_sip.h"
 #include "mm_udp.h"
@@ -246,7 +247,7 @@ uint8_t table_list_mtr17_intl[] = {
     0                         /* End of table list */
 };
 
-const char cmdline_options[] = "a:b:cd:e:f:hi:k:l:mn:p:qrS:st:uvw";
+const char cmdline_options[] = "a:b:cDd:e:f:hi:k:l:mn:p:qrS:st:uvw";
 
 /* Default communication parameters, may be overridden during compile. */
 #ifndef DEFAULT_BAUD_RATE
@@ -307,6 +308,7 @@ int main(int argc, char *argv[]) {
     char  access_code_str[8];
     char  key_card_number_str[11];
     int   quiet = 0;
+    int   detect_only = 0;
     int   status;
     int   retries;
     int   betest = 1;
@@ -411,6 +413,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 'd':
                 snprintf(mm_context->default_table_dir, sizeof(mm_context->default_table_dir), "%s", optarg);
+                break;
+            case 'D':
+                detect_only = 1;
                 break;
             case 'e':
                 mm_context->connection.proto.error_inject_type = atoi(optarg);
@@ -551,6 +556,13 @@ int main(int argc, char *argv[]) {
         return(-EINVAL);
     }
 
+    if (detect_only) {
+        int found = mm_detect_report(baudrate);
+
+        mm_shutdown(mm_context);
+        return (found > 0) ? 0 : -ENODEV;
+    }
+
     printf("Default Table directory: %s\n",                         mm_context->default_table_dir);
     printf("Terminal-specific Table directory: %s/<terminal_id>\n", mm_context->term_table_dir);
 
@@ -606,6 +618,21 @@ int main(int argc, char *argv[]) {
         sip_config.debug = mm_context->debuglevel;
         printf("Using SIP virtual modem (software Bell 212A modem, %s).\n",
                (sip_config.registrar[0] != '\0') ? "registering with SIP registrar" : "accepting direct SIP calls");
+    }
+
+    /* With a serial modem, "-f auto" (or no -f at all) means find the modem ourselves. */
+    if ((mm_context->connection.sip_config == NULL) && !mm_context->test_mode &&
+        ((modem_dev == NULL) || (strcmp(modem_dev, "auto") == 0))) {
+        static mm_detected_modem_t detected;
+
+        if (mm_detect_modems(&detected, 1, baudrate, stdout) < 1) {
+            fprintf(stderr, "Error: no modem found.  Use -f <modem_dev> to specify one, or -D to scan again.\n");
+            mm_shutdown(mm_context);
+            return(-ENODEV);
+        }
+        modem_dev = detected.path;
+        baudrate  = detected.baudrate;
+        printf("Using modem %s at %d bps.\n", modem_dev, baudrate);
     }
 
     status = mm_connection_open(&mm_context->connection, modem_dev, baudrate, mm_context->test_mode);
@@ -1912,17 +1939,18 @@ time_t mm_time(int test_mode, time_t *rawtime) {
 }
 
 static void mm_display_help(const char *name, FILE *stream) {
-    /* "a:b:cd:e:f:hi:k:l:mn:p:qrS:st:uvw" */
+    /* "a:b:cDd:e:f:hi:k:l:mn:p:qrS:st:uvw" */
     fprintf(stream,
-        "usage: %s [-vhmq] [-f <filename>] [-i \"modem init string\"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>]\n",
+        "usage: %s [-vhmqD] [-f <filename>] [-i \"modem init string\"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>]\n",
         name);
     fprintf(stream,
             "\t-a <access_code> - Craft 7-digit access code (default: CRASERV)\n" \
             "\t-b <baudrate> - Modem baud rate, in bps.  Defaults to 19200.\n" \
             "\t-c - Always download complete table set.\n" \
+            "\t-D - detect: scan the serial ports for modems, list them, and exit.\n" \
             "\t-d <default_table_dir> - default table directory.\n" \
             "\t-e <error_inject_type> - Inject error on SIGBRK.\n" \
-            "\t-f <filename> modem device or file\n" \
+            "\t-f <filename> modem device or file.  With -m, -f auto (or leaving out -f) uses the first modem found.\n" \
             "\t-h this help.\n" \
             "\t-i \"modem init string\" - Modem initialization string.\n" \
             "\t-k <key_code> - Desk Terminal 10-digit key card code (default: 4012888888)\n" \

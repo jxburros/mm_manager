@@ -35,7 +35,8 @@ The design borrows from software fax over IP (spandsp, iaxmodem, t38modem):
 | `src/mm_sip.c` | Minimal SIP user agent: REGISTER with MD5 digest auth and NAT discovery, INVITE/ACK/BYE/CANCEL/OPTIONS/UPDATE, RTP |
 | `src/mm_vmodem.c` | Virtual modem: AT command emulation, auto-answer, 20 ms media clock, glue between SIP and the soft modem |
 | `src/mm_osal.c` | Small sockets/threads/time portability layer (Linux, macOS, Windows) |
-| `tests/` | Modem loopback tests (noise, echo, clock offset, A-law) and an end-to-end SIP test (`ctest`) |
+| `src/mm_detect.c` | Serial modem detection: enumerates serial ports and probes them with AT commands (`-D`, `-f auto`) |
+| `tests/` | Modem loopback tests (noise, echo, clock offset, A-law), an end-to-end SIP test and a modem detection test (`ctest`) |
 
 ## Using the SIP virtual modem
 
@@ -70,6 +71,24 @@ The `-n` NCC number(s) must be the number the payphone dials to reach the SIP nu
 Example: `-S "1000:secret@192.168.1.10;port=5070;rtp_port=12000;codec=pcmu"`
 
 The modem init string (`-i`) is still accepted. The virtual modem answers after `S0` rings (default 1), hangs up when DTR drops, and ignores other settings. `-v` prints extra detail, and `-vv` also prints SIP messages.
+
+## Finding a serial modem automatically
+
+If the payphone calls in through a real modem (or a USB modem / serial-attached ATA), mm_manager can find it for you, so you don't need to know its device name or baud rate:
+
+```
+# Scan the serial ports for modems, list them, and exit:
+mm_manager -D
+
+# Use the first modem found:
+mm_manager -m -f auto -n 5551212
+```
+
+Each serial port is probed with Hayes AT commands (`ATQ0V1E1`, then `ATI3` for an identification string). The rate given with `-b` is tried first, then 19200, 9600, 38400, 57600, 115200, 2400 and 1200 bps. A port counts as a modem only if it answers `OK`, so an idle port, a GPS receiver or a loopback plug won't be picked. With `-m`, leaving out `-f` is the same as `-f auto`.
+
+Ports are enumerated from `/dev` (`ttyS*`, `ttyUSB*`, `ttyACM*`, `ttyAMA*`, `rfcomm*` on Linux, `cu.*` on macOS, `cua*` on the BSDs) or the `COM` ports on Windows. On Linux, you may need to be in the `dialout` group to open them. The scan sends AT commands to every port it can open, so stop any program that is using a modem first.
+
+A Millennium terminal can't be detected this way, because it never answers calls and only calls the Manager. What is detected is the modem it will call through.
 
 ### ATA / PBX configuration
 

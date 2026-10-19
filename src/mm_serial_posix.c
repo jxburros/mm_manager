@@ -15,6 +15,12 @@
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <dirent.h>
+#ifdef __linux__
+# include <linux/serial.h>
+#endif /* __linux__ */
+
+#include "mm_serial.h"
 
 /*
  * Open serial port specified in modem_dev.
@@ -156,4 +162,88 @@ int platform_serial_get_modem_status(int fd) {
     }
 
     return retstatus;
+}
+
+/* Device name prefixes (in /dev) that identify serial ports on this OS. */
+static const char *const serial_prefixes[] = {
+#if defined(__linux__)
+    "ttyS", "ttyUSB", "ttyACM", "ttyAMA", "ttyHS", "rfcomm",
+#elif defined(__APPLE__)
+    "cu.",
+#else /* BSD */
+    "cuaU", "cuau", "cuaa", "cua",
+#endif /* __linux__ */
+    NULL
+};
+
+static int compare_names(const void *a, const void *b) {
+    return strcmp((const char *)a, (const char *)b);
+}
+
+#ifdef __linux__
+/* The kernel creates a ttyS* node for every UART it could have, whether or not there is one. */
+static int serial_port_has_uart(const char *path) {
+    struct serial_struct ser;
+    int fd = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    int present = 0;
+
+    if (fd < 0) {
+        return 0;
+    }
+    if (ioctl(fd, TIOCGSERIAL, &ser) == 0) {
+        present = (ser.type != PORT_UNKNOWN);
+    }
+    close(fd);
+    return present;
+}
+#endif /* __linux__ */
+
+int platform_list_serial_ports(char *paths, size_t path_len, int max_ports) {
+    DIR           *dir;
+    struct dirent *entry;
+    int            count = 0;
+
+    if ((paths == NULL) || (path_len < 16) || (max_ports <= 0)) {
+        return 0;
+    }
+
+    dir = opendir("/dev");
+    if (dir == NULL) {
+        return 0;
+    }
+
+    while ((count < max_ports) && ((entry = readdir(dir)) != NULL)) {
+        char path[256];
+
+        for (const char *const *prefix = serial_prefixes; *prefix != NULL; prefix++) {
+            if (strncmp(entry->d_name, *prefix, strlen(*prefix)) != 0) {
+                continue;
+            }
+
+#ifdef __APPLE__
+            /* Probing the Bluetooth virtual port can block for a long time. */
+            if (strstr(entry->d_name, "Bluetooth") != NULL) {
+                break;
+            }
+#endif /* __APPLE__ */
+
+            if (snprintf(path, sizeof(path), "/dev/%s", entry->d_name) >= (int)sizeof(path) ||
+                strlen(path) >= path_len) {
+                break;
+            }
+#ifdef __linux__
+            if ((strncmp(entry->d_name, "ttyS", 4) == 0) && !serial_port_has_uart(path)) {
+                break;
+            }
+#endif /* __linux__ */
+            snprintf(&paths[(size_t)count * path_len], path_len, "%s", path);
+            count++;
+            break;
+        }
+    }
+    closedir(dir);
+
+    qsort(paths, (size_t)count, path_len, compare_names);
+
+    return count;
 }

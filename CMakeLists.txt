@@ -125,6 +125,8 @@ set(MANAGER_SRC
     "src/mm_manager.h"
     "src/mm_accounting.c"
     "src/mm_connection.c"
+    "src/mm_detect.c"
+    "src/mm_detect.h"
     "src/mm_modem.c"
     "src/mm_pcap.c"
     "src/mm_pcap.h"
@@ -227,6 +229,13 @@ TARGET_LINK_LIBRARIES(test_sip_vmodem wsock32 ws2_32)
 else()
 TARGET_LINK_LIBRARIES(test_softmodem m)
 TARGET_LINK_LIBRARIES(test_sip_vmodem pthread m)
+endif()
+if(UNIX)
+# Serial modem detection, using pseudo-terminals as stand-ins for serial ports.
+add_executable (test_detect "tests/test_detect.c" "src/mm_detect.c" "src/mm_serial_posix.c")
+TARGET_LINK_LIBRARIES(test_detect pthread)
+add_test(NAME detect COMMAND test_detect)
+set_tests_properties(detect PROPERTIES TIMEOUT 60)
 endif()
 add_test(NAME softmodem COMMAND test_softmodem)
 add_test(NAME sip_vmodem COMMAND test_sip_vmodem)
