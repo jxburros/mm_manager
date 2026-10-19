@@ -148,8 +148,84 @@ p { margin: 0 0 12px; }
 }
 @media (max-width: 760px) { .wordmark { font-size: 32px; } .blob { width: 120px; height: 120px; right: -36px; } }
 
-/* ---- tabs ---- */
-.tabs { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 24px; }
+/* ---- rail and panels ---- */
+.page { max-width: 1520px; }
+.shell { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 28px; align-items: start; }
+.rail { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.rail-btn {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    min-height: 76px; padding: 8px 4px;
+    border: 2px solid var(--line); border-radius: 22px;
+    background: transparent; color: var(--text);
+    font: 700 14px/1.1 'Nunito', sans-serif; cursor: pointer;
+}
+.rail-btn svg { width: 28px; height: 28px; fill: currentColor; }
+.rail-btn[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); box-shadow: 6px 6px 0 var(--riso-teal); }
+:root[data-theme="dark"] .rail-btn[aria-selected="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rail-btn[aria-selected="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); } }
+.rail-btn:focus-visible { outline: 3px solid var(--riso-pink); outline-offset: 3px; }
+.rail-dot { position: absolute; top: 8px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: var(--riso-teal); border: 2px solid var(--surface); }
+@media (max-width: 760px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .rail { position: static; flex-direction: row; }
+    .rail-btn { flex: 1; min-height: 60px; border-radius: 18px; }
+}
+.pane { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 1100px) { .pane { grid-template-columns: minmax(0, 1fr); } }
+.pane-nav { position: sticky; top: 16px; }
+@media (max-width: 1100px) { .pane-nav { position: static; } }
+.pane-nav .card { padding: 16px; }
+.tree { list-style: none; margin: 0; padding: 0; }
+.tree .tree { margin: 4px 0 8px 18px; padding-left: 10px; border-left: 2px solid var(--soft-line); }
+.tree-head { margin: 16px 0 4px; }
+.tree > li:first-child > .tree-head { margin-top: 0; }
+.tree-btn {
+    width: 100%; display: flex; align-items: center; gap: 8px; text-align: left;
+    min-height: 44px; padding: 6px 10px;
+    background: transparent; color: var(--text);
+    border: 2px solid transparent; border-radius: 14px;
+    font: 600 15px/1.25 'Nunito', sans-serif; cursor: pointer;
+}
+.tree-btn:hover { border-color: var(--soft-line); }
+.tree-btn[aria-current="true"] { border-color: var(--line); background: var(--bg); font-weight: 800; }
+.tree-btn:focus-visible { outline: 3px solid var(--riso-pink); outline-offset: 2px; }
+.tree-btn .grow { flex: 1; min-width: 0; }
+.tree-btn .sub { display: block; color: var(--muted); font-size: 13px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-btn .count { font: 700 12px/1 'Nunito', sans-serif; color: var(--muted); }
+.phone-row { display: flex; align-items: center; gap: 4px; }
+.phone-row > input[type="checkbox"] { width: 22px; height: 22px; margin: 0 2px 0 6px; flex: none; accent-color: var(--riso-pink); }
+.phone-row .tree-btn { flex: 1; min-width: 0; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--soft-line); }
+.status-dot.ok { background: var(--riso-teal); }
+.status-dot.wait { background: var(--sunny-yellow); }
+.status-dot.bad { background: var(--riso-pink); }
+.page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; }
+.page-head h1 { font: 800 28px/1.15 'Nunito', sans-serif; margin-right: 4px; }
+.page-head .grow { flex: 1; }
+.src { font: 700 12px/1 'Nunito', sans-serif; padding: 5px 9px; border-radius: 999px; white-space: nowrap; }
+.src.own { background: var(--riso-pink); color: var(--ink); }
+.src.shared { background: transparent; border: 2px solid var(--line); color: var(--text); padding: 3px 7px; }
+.src.missing { background: transparent; border: 2px dashed var(--line); color: var(--muted); padding: 3px 7px; }
+.src.draft { background: var(--sunny-yellow); color: var(--ink); }
+.table-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-bottom: 24px; }
+.table-pick {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;
+    padding: 12px 14px; min-height: 48px;
+    border: 2px solid var(--soft-line); border-radius: 16px;
+    background: var(--surface); color: var(--text);
+    font: 700 15px/1.25 'Nunito', sans-serif; cursor: pointer;
+}
+.table-pick:hover { border-color: var(--line); }
+.table-pick[aria-current="true"] { border-color: var(--line); box-shadow: 6px 6px 0 var(--riso-teal); }
+.table-pick:focus-visible { outline: 3px solid var(--riso-pink); outline-offset: 3px; }
+.table-pick .meta { font-weight: 400; }
+.scope-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.scope-row .tab { min-height: 44px; padding: 0 16px; font-size: 15px; }
+.who { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.changes { margin: 8px 0 0; padding-left: 20px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.summary-grid .table-pick { min-height: 72px; }
 .tab {
     font: 700 16px/1 'Nunito', sans-serif;
     min-height: 48px;
@@ -160,9 +236,9 @@ p { margin: 0 0 12px; }
     color: var(--text);
     cursor: pointer;
 }
-.tab[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-:root[data-theme="dark"] .tab[aria-selected="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tab[aria-selected="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); } }
+.tab[aria-selected="true"], .tab[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+:root[data-theme="dark"] .tab[aria-selected="true"], :root[data-theme="dark"] .tab[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tab[aria-selected="true"], :root:not([data-theme="light"]) .tab[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); } }
 
 /* ---- buttons ---- */
 .btn {
@@ -373,8 +449,6 @@ legend { padding: 0; }
 .notice.ink { background: var(--ink); color: var(--paper); }
 .notice p:last-child { margin: 0; }
 .subtabs { display: flex; gap: 8px; margin: 24px 0 16px; flex-wrap: wrap; }
-.subnav { margin: -8px 0 24px; }
-.subnav .tab { min-height: 44px; padding: 0 18px; font-size: 15px; }
 
 /* ---- list editor ---- */
 .list-tools { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 12px; }
@@ -680,47 +754,45 @@ dl.glossary dd { margin: 0; }
         </div>
     </header>
 
-    <nav class="tabs" role="tablist" aria-label="Sections">
-        <button class="tab" role="tab" id="tab-tables" aria-controls="view-tables" aria-selected="true" data-view="tables">tables</button>
-        <button class="tab" role="tab" id="tab-phones" aria-controls="view-phones" aria-selected="false" data-view="phones" hidden>phones</button>
-        <button class="tab" role="tab" id="tab-manager" aria-controls="view-manager" aria-selected="false" data-view="manager">manager</button>
-        <button class="tab" role="tab" id="tab-files" aria-controls="view-files" aria-selected="false" data-view="files" hidden>files</button>
-        <button class="tab" role="tab" id="tab-help" aria-controls="view-help" aria-selected="false" data-view="help">help</button>
-    </nav>
-    <nav class="subtabs subnav" id="subnav" role="tablist" aria-label="Pages in this section" hidden></nav>
+    <div class="shell">
+        <nav class="rail" role="tablist" aria-label="Sections" aria-orientation="vertical">
+            <button class="rail-btn" role="tab" id="tab-phones" aria-controls="shell-main" aria-selected="true" data-view="phones">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm1 3v4h8V5H8zm1 7a1.2 1.2 0 1 0 0 2.4A1.2 1.2 0 0 0 9 12zm3 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm3 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm-6 4a1.2 1.2 0 1 0 0 2.4A1.2 1.2 0 0 0 9 16zm3 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4zm3 0a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z"/></svg>
+                <span>phones</span></button>
+            <button class="rail-btn" role="tab" id="tab-global" aria-controls="shell-main" aria-selected="false" data-view="global">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm-1.6 2.2A8 8 0 0 0 4.1 11h3.4c.1-2.5.9-4.9 2.9-6.8zm3.2 0c2 1.9 2.8 4.3 2.9 6.8h3.4a8 8 0 0 0-6.3-6.8zM9.5 11h5c-.1-2.3-.9-4.4-2.5-6-1.6 1.6-2.4 3.7-2.5 6zm-5.4 2a8 8 0 0 0 6.3 6.8c-2-1.9-2.8-4.3-2.9-6.8H4.1zm5.4 0c.1 2.3.9 4.4 2.5 6 1.6-1.6 2.4-3.7 2.5-6h-5zm7 0c-.1 2.5-.9 4.9-2.9 6.8a8 8 0 0 0 6.3-6.8h-3.4z"/></svg>
+                <span>global</span></button>
+            <button class="rail-btn" role="tab" id="tab-manager" aria-controls="shell-main" aria-selected="false" data-view="manager">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6v2h3v2H7v-2h3v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm1.5 4.2 3 2.3-3 2.3 1.2 1.5 4.9-3.8-4.9-3.8-1.2 1.5zM12 13v2h6v-2h-6z"/></svg>
+                <span>manager</span><span class="rail-dot" id="rail-run" hidden></span></button>
+            <button class="rail-btn" role="tab" id="tab-help" aria-controls="shell-main" aria-selected="false" data-view="help">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 14a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zm0-10c-2.3 0-4 1.5-4 3.6h2.2c0-.9.8-1.6 1.8-1.6s1.8.6 1.8 1.5c0 .7-.4 1.1-1.3 1.7-1.2.8-1.7 1.6-1.7 2.9v.4h2.2v-.3c0-.7.3-1.1 1.2-1.7 1.2-.8 1.8-1.7 1.8-3C16 7.4 14.4 6 12 6z"/></svg>
+                <span>help</span></button>
+        </nav>
+        <main id="shell-main" role="tabpanel" aria-labelledby="tab-phones"></main>
+    </div>
 
-    <main>
-        <section id="view-tables" role="tabpanel" aria-labelledby="tab-tables">
-            <div class="workspace">
-                <aside class="side">
-                    <div class="card">
-                        <div class="overline">your tables</div>
-                        <div class="btns" style="margin-bottom:16px">
-                            <button class="btn primary" type="button" id="open-folder-btn">open folder</button>
-                            <button class="btn" type="button" id="open-files-btn">open files</button>
-                            <button class="btn" type="button" id="new-table-btn">new table</button>
-                        </div>
-                        <input type="file" id="file-input" accept=".bin" multiple hidden>
-                        <input type="file" id="dir-input" webkitdirectory multiple hidden>
-                        <div id="folder-info" class="meta" style="margin-bottom:12px"></div>
-                        <ul class="file-list" id="file-list" aria-label="Open tables"></ul>
-                        <div class="btns" style="margin-top:12px">
-                            <button class="btn small" type="button" id="save-all-btn" hidden>save all changes</button>
-                        </div>
-                    </div>
-                </aside>
-                <div id="editor" aria-live="polite"></div>
+    <!-- Kept here while no page shows them, so they keep their state. -->
+    <div id="parking" hidden>
+        <aside class="side" id="files-side">
+            <div class="card">
+                <div class="overline">table files</div>
+                <div class="btns" style="margin-bottom:16px">
+                    <button class="btn primary" type="button" id="open-folder-btn">open folder</button>
+                    <button class="btn" type="button" id="open-files-btn">open files</button>
+                    <button class="btn" type="button" id="new-table-btn">new table</button>
+                </div>
+                <input type="file" id="file-input" accept=".bin" multiple hidden>
+                <input type="file" id="dir-input" webkitdirectory multiple hidden>
+                <div id="folder-info" class="meta" style="margin-bottom:12px"></div>
+                <ul class="file-list" id="file-list" aria-label="Open tables"></ul>
+                <div class="btns" style="margin-top:12px">
+                    <button class="btn small" type="button" id="save-all-btn" hidden>save all changes</button>
+                </div>
             </div>
-        </section>
-
-        <section id="view-generate" role="tabpanel" aria-labelledby="tab-tables" hidden></section>
-        <section id="view-phones" role="tabpanel" aria-labelledby="tab-phones" hidden></section>
-        <section id="view-records" role="tabpanel" aria-labelledby="tab-phones" hidden></section>
-        <section id="view-manager" role="tabpanel" aria-labelledby="tab-manager" hidden></section>
-        <section id="view-roms" role="tabpanel" aria-labelledby="tab-manager" hidden></section>
-        <section id="view-files" role="tabpanel" aria-labelledby="tab-files" hidden></section>
-        <section id="view-help" role="tabpanel" aria-labelledby="tab-help" hidden></section>
-    </main>
+        </aside>
+        <div id="editor" aria-live="polite"></div>
+    </div>
 
     <footer>
         mmumblephone is a fork of <a href="https://github.com/hharte/mm_manager">mm_manager</a> by Howard M. Harte.
@@ -1689,7 +1761,7 @@ const GENERATED = [
     [0x1f, 'INSTSV', 'Installation / servicing', 'Access code (-a) and key card (-k). Packet delay 100 ms, 40 retries before out of service, 150 s coin box lock timeout are fixed.'],
     [0x20, 'COMMST', 'Communication statistics', 'Fixed defaults: perf stats every day, threshold 1.'],
     [0x22, 'CALLST', 'Call statistics', 'Fixed defaults: daily call stats, CDR threshold 40.'],
-    [0x23, 'TERM call-in', 'Call-in parameters', 'Calls in every 12 hours (-I, or the phone\'s own schedule on the phones tab); 30 CDRs trigger a call.'],
+    [0x23, 'TERM call-in', 'Call-in parameters', 'Calls in every 12 hours (-I, or the phone\'s own schedule on its overview); 30 CDRs trigger a call.'],
     [0x26, 'TCASHST', 'Cash box status', 'Read back from the manager database.'],
 ];
 
@@ -1732,7 +1804,9 @@ const state = {
     root: null,          /* FileSystemDirectoryHandle when a folder was opened with write access */
     rootName: '',
     clip: null,          /* copied list entry */
-    view: 'tables',
+    view: 'phones',
+    edCtx: null,         /* where the editor is shown: { scope } on a phone or global page, { bulk } for several phones, null for table files */
+    extraPhones: new Set(),  /* phone folders made here that hold no table yet */
 };
 const fsAccess = 'showDirectoryPicker' in window;
 
@@ -1763,21 +1837,27 @@ const serverPathOk = p => !!p && !/^[\\/]|:|(^|[\\/])\.|[\\/]$/.test(p);
 /* Where mm_manager looks for tables: -t, or tables/. */
 const tablesBase = () => (serverPathOk(mgr.termDir) ? mgr.termDir.replace(/\\/g, '/') : 'tables');
 
-function addFile({ path, data, handle = null, dir = null, isNew = false }) {
+/* A table file. "exists" is false until it has been saved once. */
+function makeFile({ path, data, handle = null, dir = null, isNew = false }) {
     const name = path.split('/').pop();
-    const existing = state.files.find(f => f.path === path);
-    if (existing && !isNew) {
-        existing.bytes = data; existing.orig = data.slice(); existing.handle = handle; existing.dir = dir;
-        return existing;
-    }
     const tableId = detectTable(name, data.length);
-    const f = {
+    return {
         key: uid(), path, name, folder: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '',
         tableId, def: tableId != null ? DEFS[tableId] || null : null,
-        bytes: data, orig: isNew ? new Uint8Array(0) : data.slice(), handle, dir, view: null,
+        bytes: data, orig: isNew ? new Uint8Array(0) : data.slice(), handle, dir, view: null, exists: !isNew,
     };
+}
+const sortFiles = () => state.files.sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
+
+function addFile({ path, data, handle = null, dir = null, isNew = false }) {
+    const existing = state.files.find(f => f.path === path);
+    if (existing && !isNew) {
+        Object.assign(existing, { bytes: data, orig: data.slice(), handle, dir, exists: true });
+        return existing;
+    }
+    const f = makeFile({ path, data, handle, dir, isNew });
     state.files.push(f);
-    state.files.sort((a, b) => a.folder.localeCompare(b.folder) || a.name.localeCompare(b.name));
+    sortFiles();
     return f;
 }
 
@@ -1790,7 +1870,8 @@ async function openFolder() {
     try { dir = await window.showDirectoryPicker({ id: 'mm-tables', mode: 'readwrite' }); }
     catch (e) { if (e.name !== 'AbortError') toast(`hmm, couldn't open that folder: ${e.message}`, 'error'); return; }
     if (state.files.some(f => !f.practice && isDirty(f)) && !confirm('Opening a folder closes the tables you have open, including unsaved changes. Continue?')) return;
-    state.files = []; state.current = null; state.root = dir; state.rootName = dir.name;
+    state.files = state.files.filter(f => f.practice); state.current = null; state.root = dir; state.rootName = dir.name;
+    drafts.clear();
     let count = 0;
     async function scan(d, prefix, depth) {
         for await (const [name, handle] of d.entries()) {
@@ -1805,7 +1886,6 @@ async function openFolder() {
     }
     try { await scan(dir, '', 0); }
     catch (e) { toast(`hmm, couldn't read everything in that folder: ${e.message}`, 'error'); }
-    state.current = state.files[0] || null;
     renderAll();
     toast(count ? `${count} tables on the line from ${dir.name}/` : `no mm_table_XX.bin files in ${dir.name}/ — try the tables/ folder`, count ? 'ok' : 'info');
 }
@@ -1817,7 +1897,8 @@ async function openServerTables(quiet = false) {
     let list;
     try { list = await api(`/api/list?dir=${enc(base)}&depth=2`); }
     catch (e) { toast(`hmm, couldn't list ${base}/: ${e.message}`, 'error'); return; }
-    state.files = []; state.current = null; state.root = { server: true, path: base }; state.rootName = base;
+    state.files = state.files.filter(f => f.practice); state.current = null; state.root = { server: true, path: base }; state.rootName = base;
+    drafts.clear();
     const names = list.entries.filter(e => !e.dir && /^mm_table_[0-9a-f]{2}\.bin$/i.test(e.path.split('/').pop()) &&
         e.path.split('/').length - base.split('/').length <= 2);
     try {
@@ -1827,11 +1908,10 @@ async function openServerTables(quiet = false) {
             addFile({ path: rel, data: await serverRead(e.path), dir: { server: true, path: folder ? `${base}/${folder}` : base } });
         }
     } catch (e) { toast(`hmm, couldn't read everything in ${base}/: ${e.message}`, 'error'); }
-    state.current = state.files[0] || null;
     renderAll();
     if (!quiet || !names.length) {
         toast(names.length ? `${names.length} tables on the line from ${base}/` :
-            (list.exists ? `no mm_table_XX.bin files in ${base}/ yet — make one with "new table"` : `there's no ${base}/ folder yet — "new table" makes it`), names.length ? 'ok' : 'info');
+            (list.exists ? `no mm_table_XX.bin files in ${base}/ yet — add one under global` : `there's no ${base}/ folder yet — adding a table under global makes it`), names.length ? 'ok' : 'info');
     }
 }
 
@@ -1859,22 +1939,26 @@ async function openFiles() {
     renderAll();
 }
 
-async function saveFile(f) {
+/* Write a table where it came from (or download it). Resolves to true once it is saved. */
+async function saveFile(f, { quiet = false } = {}) {
+    const say = (msg, kind) => { if (!quiet || kind === 'error') toast(msg, kind); };
+    const done = ok => { if (ok) f.exists = true; updateDirtyUI(); refreshSources(); return ok; };
     if (f.practice) {
         f.orig = f.bytes.slice();
         f.practiceSaved = true;
-        toast('saved! (it\'s a practice table, so nothing was written to disk)');
-        updateDirtyUI();
-        return;
+        say('saved! (it\'s a practice table, so nothing was written to disk)');
+        return done(true);
+    }
+    if (!f.dir && state.root && f.folder && !f.handle) {
+        try { f.dir = await rootSubdir(f.folder); } catch (e) { say(`hmm, couldn't make ${f.folder}/: ${e.message}`, 'error'); return done(false); }
     }
     if (f.dir && f.dir.server) {
         try {
             await serverWrite(`${f.dir.path}/${f.name}`, f.bytes);
             f.orig = f.bytes.slice();
-            toast(`saved! ${f.dir.path}/${f.name}`);
-        } catch (e) { toast(`hmm, that didn't save: ${e.message}`, 'error'); }
-        updateDirtyUI();
-        return;
+            say(`saved! ${f.dir.path}/${f.name}`);
+            return done(true);
+        } catch (e) { say(`hmm, that didn't save: ${e.message}`, 'error'); return done(false); }
     }
     try {
         if (!f.handle && f.dir) f.handle = await f.dir.getFileHandle(f.name, { create: true });
@@ -1883,16 +1967,17 @@ async function saveFile(f) {
             await w.write(f.bytes);
             await w.close();
             f.orig = f.bytes.slice();
-            toast(`saved! ${state.rootName ? state.rootName + '/' : ''}${f.path}`);
+            say(`saved! ${state.rootName ? state.rootName + '/' : ''}${f.path}`);
         } else {
             download(f.name, f.bytes);
             f.orig = f.bytes.slice();
-            toast(`downloaded ${f.name}${f.folder ? ` — put it in ${f.folder}/` : ''}`, 'info');
+            say(`downloaded ${f.name}${f.folder ? ` — put it in tables/${f.folder}/` : ''}`, 'info');
         }
     } catch (e) {
-        toast(`hmm, that didn't save: ${e.message}. try "download" instead?`, 'error');
+        say(`hmm, that didn't save: ${e.message}. try "download" instead?`, 'error');
+        return done(false);
     }
-    updateDirtyUI();
+    return done(true);
 }
 
 async function saveAll() {
@@ -1905,6 +1990,217 @@ async function rootSubdir(path) {
     let d = state.root;
     for (const part of path.split('/').filter(Boolean)) d = await d.getDirectoryHandle(part, { create: true });
     return d;
+}
+
+/* =====================================================================
+ * Settings: which file each phone gets, and phone-only copies
+ * ===================================================================== */
+
+/*
+ * For each table, mm_manager sends a terminal the first file it finds in
+ * tables/<terminal ID>/, then tables/<model>/, then tables/default/
+ * (load_mm_table() in src/mm_manager.c). A "scope" is one of those places as
+ * seen from the page: a phone, a model's phones, all phones, or the practice
+ * phone the tour uses. Its chain is the folders it reads, in order.
+ */
+const MODEL_FOLDERS = [['multipay', 'multipay phones'], ['coin', 'coin phones'], ['card_only', 'card-only phones'],
+    ['desk', 'desk phones'], ['inmate', 'inmate phones']];
+const MODEL_FOLDER = { 1: 'card_only', 2: 'multipay', 3: 'coin', 4: 'inmate', 0x11: 'desk' };
+const modelLabel = folder => (MODEL_FOLDERS.find(([f]) => f === folder) || [, folder + '/'])[1];
+const isTermFolder = s => /^\d{10}$/.test(s);
+const PRACTICE_ID = 'practice';
+
+/* What each group of settings is for. A table in no group (or not known at all) goes under advanced. */
+const SETTING_GROUPS = [
+    { key: 'display', title: 'Display & messages', about: 'What the display shows: the advertising messages while the phone is idle, and the terminal\'s own prompts.',
+        ids: [0x1d, 0x1b, 0x1c, 0x55, 0x56] },
+    { key: 'features', title: 'Features & hours', about: 'Switches for card checking, advertising, the clock and more; how long prompts and timeouts last; and times of day when service is limited.',
+        ids: [0x1a, 0x1e, 0x3a] },
+    { key: 'prices', title: 'Prices', about: 'What calls cost: the rate table, and how calls to each country are rated.', ids: [0x49, 0x97] },
+    { key: 'numbers', title: 'Free, blocked & speed-dial numbers', about: 'Numbers that are free (911, 800 numbers), blocked, or go to the operator, and the list callers can pick from instead of dialing.',
+        ids: [0x5c, 0x3b, 0x18, 0x37] },
+    { key: 'local', title: 'Local & long distance', about: 'Which area codes are domestic, and which exchanges are local, toll or invalid from the phone. These depend on where the phone is.',
+        ids: [0x96, ...Object.values(DEFS).filter(d => d.code === 'LCD').map(d => d.id)] },
+    { key: 'cards', title: 'Cards & carriers', about: 'Which cards the phone takes and how it checks them, the long-distance carriers, and smart card settings.',
+        ids: [0x86, 0x16, 0x87, 0x17, 0x5d] },
+    { key: 'coins', title: 'Coins & cash box', about: 'What each coin is worth and when the cash box counts as full.', ids: [0x32] },
+    { key: 'advanced', title: 'Advanced', about: 'Tables whose layout isn\'t documented, and any table this page doesn\'t know. Change them only if you know what they hold.',
+        ids: [0x21, 0x3e, 0x48] },
+];
+const GROUPED = new Set(SETTING_GROUPS.flatMap(g => g.ids));
+const groupOf = id => SETTING_GROUPS.find(g => g.ids.includes(id)) || SETTING_GROUPS[SETTING_GROUPS.length - 1];
+const groupIds = (g, files) => g.key === 'advanced'
+    ? [...g.ids, ...new Set(files.filter(f => f.tableId != null && !GROUPED.has(f.tableId)).map(f => f.tableId))]
+    : g.ids;
+
+function phoneRecord(id) { return server && phones.list ? phones.list.find(p => p.id === id) || null : null; }
+function phoneName(id) {
+    if (id === PRACTICE_ID) return 'practice phone';
+    const p = phoneRecord(id);
+    return p && p.cfg.name ? p.cfg.name : fmtTerm(id);
+}
+function phoneType(id) {
+    const p = phoneRecord(id);
+    const t = p && p.status.terminal_type;
+    return /^\d+$/.test(t || '') && +t <= 60 ? +t : null;
+}
+/* Every phone this page knows: from mm_gui's list, and any terminal folder among the open tables. */
+function phoneIds() {
+    const ids = new Set(server && phones.list ? phones.list.map(p => p.id) : []);
+    for (const f of state.files) if (isTermFolder(f.folder) && !f.practice) ids.add(f.folder);
+    for (const id of state.extraPhones) ids.add(id);
+    return [...ids].sort();
+}
+
+function phoneScope(id) {
+    if (id === PRACTICE_ID) return { kind: 'practice', id, folder: 'practice', chain: ['practice'] };
+    const t = phoneType(id);
+    const model = (t != null && MODEL_FOLDER[TERM_TYPE_MODEL[t]]) || 'multipay';
+    return { kind: 'phone', id, folder: id, chain: [id, model, 'default'], model, known: t != null, mtr: t != null ? TERM_TYPE_MTR[t] : 0 };
+}
+function sharedScope(folder) {
+    return { kind: 'shared', id: folder, folder, chain: folder === 'default' ? ['default'] : [folder, 'default'] };
+}
+
+const fileIn = (folder, id) => state.files.find(f => f.folder === folder && f.tableId === id);
+/* The file mm_manager would send for a table in this scope, or null. */
+function resolve(scope, id) {
+    for (const folder of scope.chain) { const f = fileIn(folder, id); if (f) return f; }
+    return null;
+}
+
+function firmwareRow(mtr) {
+    const name = mtr === 2000 ? 'MTR 2.x' : mtr === 1200 ? 'MTR 1.20' : mtr >= 1090 && mtr <= 1130 ? 'MTR 1.9 – 1.13'
+        : mtr === 1080 ? 'MTR 1.7 international' : mtr === 1060 || mtr === 1070 ? 'MTR 1.6 – 1.7' : null;
+    return FIRMWARE_TABLES.find(([n]) => n === name) || null;
+}
+
+/*
+ * The tables to list for a group in a scope: those it gets a file for, and, for a phone
+ * whose firmware is known, only what that firmware takes, plus the ones it should get but
+ * has no file for anywhere (LCD tables excepted: a phone only needs those for its area).
+ */
+function scopeTables(scope, g) {
+    const inChain = state.files.filter(f => scope.chain.includes(f.folder));
+    let ids = groupIds(g, inChain).filter(id => resolve(scope, id));
+    const fw = scope.kind === 'phone' && scope.known ? firmwareRow(scope.mtr) : null;
+    if (fw) {
+        ids = ids.filter(id => fw[1].includes(id));
+        /* mm_manager builds 0x1e itself when there is no file for it, so it is never missing. */
+        for (const id of g.ids) if (fw[1].includes(id) && !ids.includes(id) && DEFS[id] && DEFS[id].code !== 'LCD' && id !== 0x1e) ids.push(id);
+    }
+    return ids;
+}
+
+/* How a scope gets a file: its own, shared, or not saved yet. */
+function sourceOf(scope, f) {
+    if (!f) return ['missing', 'not set up'];
+    if (f.folder === scope.folder) {
+        const own = scope.kind === 'phone' ? 'this phone only' : scope.kind === 'practice' ? 'practice'
+            : scope.folder === 'default' ? 'all phones' : `${modelLabel(scope.folder)} only`;
+        return f.exists === false ? ['draft', `${own} · not saved`] : ['own', own];
+    }
+    return ['shared', f.folder === 'default' ? 'shared: all phones' : `shared: ${modelLabel(f.folder)}`];
+}
+const srcBadge = (scope, id) => {
+    const [cls, text] = sourceOf(scope, resolve(scope, id));
+    return h('span', { class: 'src ' + cls, 'data-src': id }, text);
+};
+/* Update the source badges on the page, e.g. once an edit turns a shared table into the phone's own. */
+function refreshSources() {
+    if (!page.scope) return;
+    document.querySelectorAll('#shell-main [data-src]').forEach(el => {
+        const [cls, text] = sourceOf(page.scope, resolve(page.scope, +el.dataset.src));
+        el.className = 'src ' + cls;
+        el.textContent = text;
+    });
+    const note = $('#scope-note');
+    if (note && state.current) note.replaceWith(scopeNote(state.current) || h('span', { id: 'scope-note' }));
+}
+
+/*
+ * The file to edit for a table in a scope. When the scope only shares it, this is an
+ * unsaved copy in the scope's own folder: it joins the open files with the first change,
+ * so editing a shared setting on a phone changes that phone only.
+ */
+const drafts = new Map();
+function editableFor(scope, id) {
+    const src = resolve(scope, id);
+    if (!src || src.folder === scope.folder) return src;
+    const path = `${scope.folder}/${src.name}`;
+    let d = drafts.get(path);
+    if (!d || (d.base !== src && !state.files.includes(d))) {
+        d = makeFile({ path, data: src.bytes.slice() });
+        Object.assign(d, { orig: src.bytes.slice(), exists: false, base: src, view: src.view, practice: src.practice });
+        drafts.set(path, d);
+    }
+    return d;
+}
+
+/* Called after every edit: take in copies that now differ, drop ones that are back to the shared version. */
+function adoptDrafts() {
+    let changed = false;
+    for (const d of drafts.values()) {
+        const inFiles = state.files.includes(d);
+        if (isDirty(d) && !inFiles) {
+            state.files.push(d);
+            sortFiles();
+            if (state.root && !d.dir) rootSubdir(d.folder).then(dir => { d.dir = dir; }).catch(e => toast(`hmm, couldn't make ${d.folder}/: ${e.message}`, 'error'));
+            changed = true;
+        } else if (!isDirty(d) && inFiles && d.exists === false) {
+            state.files = state.files.filter(x => x !== d);
+            changed = true;
+        }
+    }
+    if (changed) { refreshSources(); renderSidebar(); }
+}
+
+/* Delete a scope's own copy of a table, so it goes back to the shared one. */
+async function dropOwn(f) {
+    const back = f.folder === 'default' ? null : isTermFolder(f.folder) ? 'the shared version' : 'the all-phones version';
+    if (!back) return;
+    const who = isTermFolder(f.folder) ? phoneName(f.folder) : modelLabel(f.folder);
+    if (f.exists !== false && !confirm(`Delete ${f.folder}/${f.name}? ${who} will get ${back} again. This can't be undone.`)) return;
+    if (f.exists !== false) {
+        try {
+            if (f.dir && f.dir.server) await api(`/api/delete?path=${enc(`${f.dir.path}/${f.name}`)}`, { method: 'POST' });
+            else if (f.dir && f.dir.removeEntry) await f.dir.removeEntry(f.name);
+            else { toast(`delete ${f.folder}/${f.name} from your tables/ folder yourself — this page can't`, 'info'); }
+        } catch (e) { toast(`hmm, couldn't delete it: ${e.message}`, 'error'); return; }
+    }
+    state.files = state.files.filter(x => x !== f);
+    drafts.delete(f.path);
+    if (state.current === f) state.current = null;
+    toast(`back to ${back}`);
+    renderAll();
+}
+
+/* Phones (other than any in the list "except") that get this exact file, and those with their own instead. */
+function usersOf(f, except = []) {
+    const uses = [], own = [];
+    for (const id of phoneIds()) {
+        if (except.includes(id)) continue;
+        const sc = phoneScope(id);
+        if (!sc.chain.includes(f.folder)) continue;
+        const r = resolve(sc, f.tableId);
+        if (r === f) uses.push(id);
+        else if (r && sc.chain.indexOf(r.folder) < sc.chain.indexOf(f.folder)) own.push(id);
+    }
+    return { uses, own };
+}
+
+/* Make a new, blank table in a scope's own folder. */
+async function createIn(scope, id) {
+    const d = DEFS[id];
+    if (!state.root && scope.kind !== 'practice') { toast('open your tables/ folder first (global → table files)', 'error'); return null; }
+    const f = addFile({ path: `${scope.folder}/${tableFileName(id)}`, data: createTable(d), isNew: true });
+    if (scope.kind === 'practice') f.practice = true;
+    else {
+        try { f.dir = await rootSubdir(scope.folder); }
+        catch (e) { toast(`hmm, couldn't make ${scope.folder}/: ${e.message}`, 'error'); }
+    }
+    toast(`new ${d.code} table ready — press save to write it`, 'info');
+    return f;
 }
 
 /* =====================================================================
@@ -1947,6 +2243,8 @@ function renderSidebar() {
 }
 
 function updateDirtyUI() {
+    adoptDrafts();
+    if (page.onEdit) page.onEdit();
     let any = false;
     for (const f of state.files) {
         const d = isDirty(f);
@@ -2008,18 +2306,20 @@ function renderEditor() {
     const structured = d && sizeOk && d.kind !== 'raw';
     if (!f.view || (f.view !== 'bytes' && !structured)) f.view = structured ? 'fields' : 'bytes';
 
-    const actions = h('div', { class: 'btns' },
+    const ec = state.edCtx || {};
+    const revert = h('button', { class: 'btn link', type: 'button', onclick: () => {
+        if (!isDirty(f) || confirm(ec.bulk ? 'Throw away the changes you haven\'t applied?' : `Throw away your changes to ${f.name}?`)) {
+            f.bytes = f.orig.length ? f.orig.slice() : createTable(d);
+            updateDirtyUI(); renderEditor();
+        }
+    } }, ec.bulk ? 'start over' : 'undo changes');
+    const actions = ec.bulk ? h('div', { class: 'btns' }, revert) : h('div', { class: 'btns' },
         h('button', { class: 'btn primary', type: 'button', 'data-tour': 'save', onclick: () => saveFile(f) },
-            f.practice ? 'save (practice)' : f.handle || f.dir ? 'save' : 'save (download)'),
+            f.practice ? 'save (practice)' : f.handle || f.dir || state.root ? 'save' : 'save (download)'),
         h('button', { class: 'btn', type: 'button', onclick: () => { download(f.name, f.bytes); toast(`downloaded ${f.name}`, 'info'); } }, 'download'),
-        h('button', { class: 'btn', type: 'button', onclick: () => copyForTerminal(f) }, 'copy for a terminal'),
-        h('button', { class: 'btn link', type: 'button', onclick: () => {
-            if (!isDirty(f) || confirm(`Throw away your changes to ${f.name}?`)) {
-                f.bytes = f.orig.length ? f.orig.slice() : createTable(d);
-                renderEditor(); updateDirtyUI();
-            }
-        } }, 'revert'),
-        h('button', { class: 'btn link', type: 'button', onclick: () => {
+        ec.scope ? null : h('button', { class: 'btn', type: 'button', onclick: () => copyForTerminal(f) }, 'copy for a phone'),
+        revert,
+        ec.scope ? null : h('button', { class: 'btn link', type: 'button', onclick: () => {
             if (isDirty(f) && !confirm(`${f.name} has unsaved changes. Close it anyway?`)) return;
             state.files = state.files.filter(x => x !== f);
             state.current = state.files[0] || null;
@@ -2031,10 +2331,12 @@ function renderEditor() {
             h('div', null,
                 h('div', { class: 'overline' }, f.tableId == null ? 'unknown table' : `table ${hexId(f.tableId)} · ${!d ? 'unknown'
                     : d.ref && d.ref.startsWith(d.code) ? d.ref : d.code + (d.ref ? ' · ' + d.ref : '')}`),
-                h('h1', { class: 'ed-title' }, d ? d.name : f.name),
-                h('div', { class: 'ed-path' }, `${state.rootName ? state.rootName + '/' : ''}${f.path} · ${f.bytes.length} bytes `,
+                h('h1', { class: 'ed-title' }, d ? d.name : f.name, ' ', ec.scope ? srcBadge(ec.scope, f.tableId) : null),
+                h('div', { class: 'ed-path' }, ec.bulk ? `${f.bytes.length} bytes · changes go to the ticked phones ` : `${state.rootName ? state.rootName + '/' : ''}${f.path} · ${f.bytes.length} bytes `,
                     h('span', { class: 'badge tilt', id: 'ed-dirty', hidden: !isDirty(f) }, 'edited'))),
             actions));
+    const note = scopeNote(f);
+    if (note) head.append(note);
 
     if (d && d.note) head.append(h('div', { class: 'notice' }, h('p', null, d.note)));
     if (!d) {
@@ -2686,16 +2988,11 @@ function buildCommand({ run = false } = {}) {
     return { line, warn, args, env };
 }
 
-function renderManager() {
-    const host = $('#view-manager');
-    host.replaceChildren();
-    const out = h('pre', { class: 'cmd', 'aria-live': 'polite' });
-    const warnList = h('ul', { class: 'warn-list' });
+/* mm_manager's options, a page each under global. */
+const MGR_SECTIONS = ['connection', 'numbers', 'callin', 'sending', 'logs'];
+
+function mgrSection(host, section) {
     const refresh = () => {
-        const { line, warn } = buildCommand();
-        out.textContent = line;
-        warnList.replaceChildren(...warn.map(w => h('li', null, w)));
-        warnList.hidden = !warn.length;
         saveMgr();
         host.querySelectorAll('[data-show]').forEach(el => {
             const [k, v] = el.dataset.show.split('=');
@@ -2728,9 +3025,11 @@ function renderManager() {
         r.addEventListener('change', () => { if (r.checked) { mgr[key] = v; refresh(); } });
         return h('label', { class: 'check' }, r, label);
     }));
+    const restart = server ? h('p', { class: 'meta', style: 'margin-top:12px' }, 'mm_manager reads these when it starts: stop it and start it again (manager) after a change.') : null;
 
-    const form = h('div', { class: 'sections' },
-        h('div', { class: 'card' }, h('h3', null, 'How the payphone reaches the manager'),
+    let left, right = null;
+    if (section === 'connection') {
+        left = h('div', { class: 'card' }, h('h3', null, 'How the payphone reaches the manager'),
             radios('link', [['sip', 'SIP virtual modem'], ['modem', 'serial modem'], ['replay', 'replay a transcript']]),
             h('div', { 'data-show': 'link=sip', style: 'margin-top:16px' },
                 radios('sipMode', [['register', 'register to a PBX / provider'], ['listen', 'listen for direct SIP calls']]),
@@ -2753,69 +3052,61 @@ function renderManager() {
                 h('div', { class: 'fields' },
                     field('device', 'Modem device', { mono: true, placeholder: 'auto', hint: '"auto" scans the serial ports (see mm_manager -D). e.g. /dev/ttyACM0 or \\\\.\\COM3' }),
                     server ? h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Not sure?'),
-                        h('button', { class: 'btn', type: 'button', onclick: () => findModems(renderManager) }, 'find modems'),
+                        h('button', { class: 'btn', type: 'button', onclick: () => findModems(() => { if (nav.global === 'connection') renderView(); }) }, 'find modems'),
                         h('div', { class: 'fhint', id: 'mgr-modems' }, modemSummary())) : null,
                     field('baud', 'Baud rate', { placeholder: 'default 19200', inputmode: 'numeric' }),
                     field('init', 'Modem init string', { mono: true, placeholder: 'leave blank for the default' })),
                 h('div', { style: 'margin-top:12px' }, check('noCarrier', 'don\'t watch the modem for carrier loss (-w)'))),
             h('div', { 'data-show': 'link=replay', style: 'margin-top:16px' },
-                h('div', { class: 'fields' }, field('replay', 'Transcript file', { mono: true, placeholder: 'e.g. install.dlog', hint: 'A file recorded earlier with -l. Handy for testing without a payphone.' })))),
-        h('div', { class: 'card' }, h('h3', null, 'Numbers and codes'),
+                h('div', { class: 'fields' }, field('replay', 'Transcript file', { mono: true, placeholder: 'e.g. install.dlog', hint: 'A file recorded earlier with -l. Handy for testing without a payphone.' }))),
+            restart);
+        right = server ? modemScanCard() : null;
+    } else if (section === 'numbers') {
+        left = h('div', { class: 'card' }, h('h3', null, 'Numbers and codes'),
+            h('p', { class: 'section-note' }, 'Every phone gets these with its tables.'),
             h('div', { class: 'fields' },
                 field('ncc1', 'Primary NCC number', { inputmode: 'numeric', placeholder: 'e.g. 18005551234', hint: 'What the payphone dials to call in. 1–15 digits.' }),
                 field('ncc2', 'Secondary NCC number', { inputmode: 'numeric', placeholder: 'same as primary' }),
                 field('access', 'Craft access code', { inputmode: 'numeric', placeholder: 'default 2727378 (CRASERV)', hint: '7 digits.' }),
-                field('keycard', 'Desk terminal key card', { inputmode: 'numeric', placeholder: 'default 4012888888', hint: 'First 10 digits of the card.' }))),
-        h('div', { class: 'card' }, h('h3', null, 'Tables'),
-            h('div', { class: 'fields' },
-                field('defaultDir', 'Default table folder', { mono: true, placeholder: 'default tables/default' }),
-                field('termDir', 'Terminal table folder', { mono: true, placeholder: 'default tables' })),
-            h('div', { class: 'chips', style: 'margin-top:12px' },
-                check('complete', 'always send every table (-c)'), check('minimal', 'send only the required tables (-s)'),
-                check('rating', 'rating test mode (-r)'))),
-        h('div', { class: 'card' }, h('h3', null, 'Updates and calling in'),
-            h('p', { class: 'section-note' }, 'The manager never calls a payphone. Payphones call in on a schedule, and a phone\'s own schedule (phones tab) wins over the default here.'),
+                field('keycard', 'Desk terminal key card', { inputmode: 'numeric', placeholder: 'default 4012888888', hint: 'First 10 digits of the card.' })),
+            restart);
+    } else if (section === 'callin') {
+        left = h('div', { class: 'card' }, h('h3', null, 'Updates and calling in'),
+            h('p', { class: 'section-note' }, 'The manager never calls a payphone. Payphones call in on a schedule. These are the defaults: a phone\'s own schedule (its overview, under phones) wins.'),
             h('div', { class: 'fields' },
                 field('callin', 'Payphones call in every (minutes)', { inputmode: 'numeric', placeholder: 'default 720 (12 hours)', hint: '5 to 143999. Sent to each phone with its tables.' }),
                 field('retries', 'Resend a table that isn\'t acknowledged', { inputmode: 'numeric', placeholder: 'default 2 times', hint: '0 to 10 times, during the same call.' })),
             h('div', { class: 'chips', style: 'margin-top:12px' },
                 check('push', 'send updates when a payphone calls in (-U)')),
-            h('p', { class: 'meta', style: 'margin-top:8px' }, 'With -U, a payphone calling in on schedule also gets any tables changed since its last update, or every table if its last update failed. Experimental: not yet tried on a real payphone.')),
-        h('div', { class: 'card' }, h('h3', null, 'Logs and debugging'),
+            h('p', { class: 'meta', style: 'margin-top:8px' }, 'With -U, a payphone calling in on schedule also gets any tables changed since its last update, or every table if its last update failed. Experimental: not yet tried on a real payphone.'),
+            restart);
+    } else if (section === 'sending') {
+        left = h('div', { class: 'card' }, h('h3', null, 'Which tables go out'),
+            h('div', { class: 'fields' },
+                field('defaultDir', 'All-phones table folder', { mono: true, placeholder: 'default tables/default' }),
+                field('termDir', 'Table folder', { mono: true, placeholder: 'default tables', hint: 'Holds a folder per phone and per model.' })),
+            h('div', { class: 'chips', style: 'margin-top:12px' },
+                check('complete', 'always send every table (-c)'), check('minimal', 'send only the required tables (-s)'),
+                check('rating', 'rating test mode (-r)')),
+            restart);
+        right = h('div', { class: 'card' },
+            h('h3', null, 'Made fresh by mm_manager'),
+            h('p', { class: 'section-note' }, 'These tables are built on every download rather than read from files, so mm_manager\'s options are how you change them.'),
+            h('ul', { class: 'gen-list' }, GENERATED.map(([id, code, name, how]) => h('li', null,
+                h('div', null, h('span', { class: 'badge paper' }, `${hexId(id)} ${code}`), ' ', h('strong', null, name)),
+                h('div', { class: 'meta' }, how)))),
+            h('p', { class: 'meta', style: 'margin-top:12px' }, 'User interface parameters (0x1e) are built too, but only when there is no file for it: add one under global → features & hours to change it.'));
+    } else {
+        left = h('div', { class: 'card' }, h('h3', null, 'Logs and debugging'),
             h('div', { class: 'fields' },
                 field('log', 'Transcript log', { mono: true, placeholder: 'e.g. session.dlog' }),
                 field('pcap', 'Packet capture', { mono: true, placeholder: 'e.g. session.pcap' }),
                 choose('verbose', 'Detail', [[0, 'quiet'], [1, '-v'], [2, '-vv (shows SIP messages)'], [3, '-vvv']])),
             h('div', { class: 'chips', style: 'margin-top:12px' },
-                check('udp', 'stream packets to Wireshark on UDP 27273 (-u)'), check('quiet', 'skip the sign-on banner (-q)'))));
-
-    const copyBtn = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
-        try { await navigator.clipboard.writeText(out.textContent); toast('copied! paste it into a terminal'); }
-        catch (e) { toast('couldn\'t reach the clipboard; select the command and copy it by hand', 'error'); }
-    } }, 'copy command');
-
-    const side = h('div', { class: 'side' },
-        server ? runCard() : null,
-        h('div', { class: 'card' + (server ? '' : ' raised'), 'data-tour': 'command' },
-            h('div', { class: 'overline' }, 'your command line'),
-            h('div', { class: 'radio-row', style: 'margin-bottom:12px' }, radios('shell', [['posix', 'Linux / macOS'], ['windows', 'Windows cmd']])),
-            out, warnList,
-            h('div', { class: 'btns' }, copyBtn,
-                h('button', { class: 'btn link', type: 'button', onclick: () => { Object.assign(mgr, MGR_DEFAULTS); renderManager(); } }, 'reset'))),
-        server ? modemScanCard() : null,
-        h('div', { class: 'card' },
-            h('h3', null, 'Made fresh by mm_manager'),
-            h('p', { class: 'section-note' }, 'These tables are built on every download rather than read from files, so the options on the left are how you change them.'),
-            h('ul', { class: 'gen-list' }, GENERATED.map(([id, code, name, how]) => h('li', null,
-                h('div', null, h('span', { class: 'badge paper' }, `${hexId(id)} ${code}`), ' ', h('strong', null, name)),
-                h('div', { class: 'meta' }, how)))),
-            h('p', { class: 'meta', style: 'margin-top:12px' }, 'User interface parameters (0x1e) are built too, but only when there is no mm_table_1e.bin — make one under tables → new table.')),
-        server ? panelCard() : null);
-
-    form.prepend(tip(server
-        ? 'Fill in the left side, then press start. mm_manager keeps running while this page is closed, until you stop it or quit the control panel.'
-        : 'Fill in the left side and the command on the right follows along. Blank fields use mm_manager\'s defaults, shown in grey.'));
-    host.append(h('div', { class: 'two-col' }, form, side));
+                check('udp', 'stream packets to Wireshark on UDP 27273 (-u)'), check('quiet', 'skip the sign-on banner (-q)')),
+            restart);
+    }
+    host.append(h('div', { class: 'two-col' }, left, right || h('div')));
     refresh();
 }
 
@@ -2886,6 +3177,7 @@ function drawJob(name) {
         const pill = $('#run-pill');
         pill.textContent = `manager: ${j.running ? (j.stopping ? 'stopping' : 'running') : 'stopped'}`;
         pill.classList.toggle('primary', j.running);
+        $('#rail-run').hidden = !j.running;
     }
 }
 
@@ -2940,7 +3232,7 @@ function logCard(name, title, note, extra) {
 
 function runCard() {
     const start = h('button', { class: 'btn primary', type: 'button', 'data-job-run': 'manager', disabled: jobs.manager.running, onclick: startManager }, 'start mm_manager');
-    const card = logCard('manager', 'run it', 'Starts mm_manager with the settings on the left. To change a setting, stop it, change it and start it again.', start);
+    const card = logCard('manager', 'run it', 'Starts mm_manager with the settings under global. To change a setting, stop it, change it and start it again.', start);
     card.classList.add('raised');
     card.dataset.tour = 'run';
     return card;
@@ -3032,7 +3324,7 @@ async function readServerText(path) {
 }
 
 const writePhoneCfg = (dir, cfg) => serverWrite(`${dir}/phone.cfg`,
-    settingsText(cfg, '# Settings for this payphone, read by mm_manager (see the phones tab of the control panel).\n'));
+    settingsText(cfg, '# Settings for this payphone, read by mm_manager (see the phone\'s overview in the control panel).\n'));
 
 async function loadPhones() {
     const base = tablesBase();
@@ -3065,15 +3357,14 @@ async function loadPhones() {
     } catch (e) {
         phones.list = phones.list || []; phones.configs = phones.configs || []; phones.error = e.message;
     }
-    if (!phones.list.some(p => p.id === phones.current)) phones.current = phones.list.length ? phones.list[0].id : null;
-    if (state.view === 'phones') renderPhones();
+    if (nav.view === 'phones' || nav.view === 'global') renderView();
 }
 
-/* After changing files under tables/, show them on the tables tab too (unless edits there are unsaved). */
+/* After changing files under tables/, read the phones and the tables again (unless table edits are unsaved). */
 async function refreshAfterPhoneChange() {
-    await loadPhones();
-    if (state.files.some(f => !f.practice && isDirty(f))) toast('reload tables on the tables tab to see the change there', 'info');
+    if (state.files.some(f => !f.practice && isDirty(f))) toast('you have unsaved table changes, so the tables weren\'t read again — save them, then press refresh', 'info');
     else await openServerTables(true);
+    await loadPhones();
 }
 
 /* Write a configuration's tables and settings into a phone's folder, and have mm_manager send them all. */
@@ -3174,7 +3465,7 @@ function applyConfigDialog(config, preselect) {
         configSel ? h('div', { class: 'field' }, h('label', { class: 'flabel', for: configSel.id }, 'Configuration'), configSel) : null,
         h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'To these phones'), h('div', null, boxes.map(b => b.el))),
         h('label', { class: 'check' }, replace, 'replace: remove the phones\' other tables and call-in settings'),
-        h('p', { class: 'meta' }, 'Each phone gets every table again the next time it asks for tables, or, with "send updates when a payphone calls in" on (manager → settings), at its next call-in.')),
+        h('p', { class: 'meta' }, 'Each phone gets every table again the next time it asks for tables, or, with "send updates when a payphone calls in" on (global → calling in & updates), at its next call-in.')),
     'apply it', async () => {
         const c = config || phones.configs.find(x => x.name === configSel.value);
         const chosen = boxes.filter(b => b.cb.checked).map(b => b.p);
@@ -3204,15 +3495,8 @@ async function removeConfig(c) {
     loadPhones();
 }
 
-function openPhoneTable(p, t) {
-    const f = state.files.find(x => x.path === `${p.id}/${t}`);
-    if (!f) { toast('that table isn\'t open on the tables tab — reload tables there', 'info'); return; }
-    state.current = f;
-    showView('tables');
-    renderAll();
-}
-
-function phoneCard(p) {
+/* A phone's overview: its ID and name, call-in schedule, updates and configurations. */
+function phoneCards(p) {
     const st = p.status;
     const type = /^\d+$/.test(st.terminal_type || '') && +st.terminal_type <= 60
         ? `${TERM_MODELS[TERM_TYPE_MODEL[+st.terminal_type]] || 'unknown'} · ${mtrName(TERM_TYPE_MTR[+st.terminal_type])}` : 'not reported yet';
@@ -3250,21 +3534,20 @@ function phoneCard(p) {
     };
     const row = (label, value) => h('div', { class: 'field' }, h('span', { class: 'flabel' }, label), h('div', null, value));
     const lastUpdate = st.last_update || '';
-    return h('div', null,
+    return [
         h('div', { class: 'card' },
-            h('div', { class: 'section-title' }, h('h2', null, p.cfg.name || fmtTerm(p.id)),
-                h('span', { class: 'badge paper' }, p.id),
-                p.pending ? h('span', { class: 'badge pink' }, 'update waiting') : null,
-                p.cfg.configuration ? h('span', { class: 'badge paper' }, `config: ${p.cfg.configuration}`) : null),
+            h('h3', null, 'This phone'),
             h('div', { class: 'fields' },
                 h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Terminal ID'),
                     h('div', { class: 'btns' }, h('strong', { class: 'mono' }, fmtTerm(p.id)),
                         h('button', { class: 'btn small', type: 'button', onclick: () => renamePhoneDialog(p) }, 'change…')),
                     h('div', { class: 'fhint' }, 'Set on the payphone during install. Change it here too if it changes there.')),
-                h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Name'), nameIn))),
+                h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Name'), nameIn,
+                    h('div', { class: 'fhint' }, 'Only for you: it is shown here instead of the number. Saved with "save settings" below.')),
+                row('Model', type))),
         h('div', { class: 'card' },
             h('h3', null, 'Calling in'),
-            h('p', { class: 'section-note' }, 'The payphone calls the manager on this schedule to report calls and alarms. With "send updates when a payphone calls in" on (manager → settings), it also picks up changed tables then.'),
+            h('p', { class: 'section-note' }, 'The payphone calls the manager on this schedule to report calls and alarms. With "send updates when a payphone calls in" on (global → calling in & updates), it also picks up changed tables then.'),
             h('div', { class: 'fields' },
                 h('div', { class: 'field' }, h('label', { class: 'flabel', for: callin.id }, 'Call in'), callin,
                     h('div', { class: 'fhint' }, 'Manager default: -I, or every 12 hours.')),
@@ -3277,66 +3560,20 @@ function phoneCard(p) {
             h('div', { class: 'fields' },
                 row('Last call', st.last_call || 'never'),
                 row('Last update', lastUpdate ? h('span', { style: /failed/.test(lastUpdate) ? 'color:var(--pink-ink);font-weight:700' : '' }, lastUpdate) : 'never'),
-                row('Last complete update', p.lastDownload ? localStamp(p.lastDownload) : 'never'),
-                row('Model', type)),
+                row('Last complete update', p.lastDownload ? localStamp(p.lastDownload) : 'never')),
             p.pending ? h('p', { class: 'notice' }, 'Every table goes to this phone the next time it calls in (with "send updates when a payphone calls in" on) or asks for tables. mm_manager sets this itself when an update fails, so it is retried.') : null,
             h('div', { class: 'btns', style: 'margin-top:16px' },
                 h('button', { class: 'btn', type: 'button', onclick: togglePending }, p.pending ? 'cancel the waiting update' : 'send every table at the next call'))),
         h('div', { class: 'card' },
-            h('h3', null, 'Tables'),
-            h('p', { class: 'section-note' }, p.tables.length
-                ? 'Tables only this phone gets. For the rest, mm_manager uses its model folder, then default/.'
-                : 'None of its own yet: it gets its model folder\'s tables, then default/. Apply a configuration, or use "copy for a terminal" on the tables tab.'),
-            p.tables.length ? h('ul', { class: 'file-list' }, p.tables.map(t => {
-                const id = parseInt(t.slice(9, 11), 16);
-                const d = DEFS[id];
-                return h('li', null, h('button', { class: 'file-item', type: 'button', onclick: () => openPhoneTable(p, t) },
-                    h('span', { class: 'code' + (d ? '' : ' unknown') }, `${hexId(id)}${d ? ' ' + d.code : ''}`),
-                    h('span', { class: 'nm' }, d ? d.name : t),
-                    h('span', { class: 'desc' }, t)));
-            })) : null,
-            h('div', { class: 'btns', style: 'margin-top:16px' },
+            h('h3', null, 'Saved configurations'),
+            h('p', { class: 'section-note' }, `${p.tables.length ? `This phone has ${p.tables.length} table${p.tables.length === 1 ? '' : 's'} of its own.` : 'This phone has no tables of its own yet.'} Save them and its call-in settings under a name to reuse on other phones, or apply one saved earlier.${p.cfg.configuration ? ` Last applied: ${p.cfg.configuration}.` : ''}`),
+            h('div', { class: 'btns' },
                 h('button', { class: 'btn', type: 'button', onclick: () => saveConfigDialog(p) }, 'save as a configuration…'),
                 h('button', { class: 'btn', type: 'button', disabled: !phones.configs.length, onclick: () => applyConfigDialog(null, p.id) }, 'apply a configuration…'))),
         h('div', { class: 'card' },
             h('div', { class: 'btns' }, h('button', { class: 'btn danger', type: 'button', onclick: () => removePhone(p) }, 'remove this phone'),
-                h('span', { class: 'meta' }, 'Deletes its folder. Its records stay in the database.'))));
-}
-
-function renderPhones() {
-    const host = $('#view-phones');
-    host.replaceChildren();
-    if (phones.list === null) { host.append(h('p', { class: 'meta' }, 'loading…')); loadPhones(); return; }
-    const nav = h('div', null,
-        h('div', { class: 'card' },
-            h('div', { class: 'overline' }, `phones · ${tablesBase()}/`),
-            tip('Each payphone is known by its terminal ID. Phones show up here by themselves after they first call in.'),
-            phones.error ? h('p', { class: 'notice' }, `hmm, couldn't read the folders: ${phones.error}`) : null,
-            !phones.list.length ? h('p', null, 'No phones yet.') : null,
-            h('ul', { class: 'file-list' }, phones.list.map(p => h('li', null,
-                h('button', { class: 'file-item', type: 'button', 'aria-current': p.id === phones.current ? 'true' : 'false',
-                    onclick: () => { phones.current = p.id; renderPhones(); } },
-                    h('span', { class: 'code' + (p.pending || /failed/.test(p.status.last_update || '') ? '' : ' unknown') },
-                        p.pending ? 'waiting' : /failed/.test(p.status.last_update || '') ? 'failed' : p.id.slice(6)),
-                    h('span', { class: 'nm' }, p.cfg.name || fmtTerm(p.id)),
-                    h('span', { class: 'desc' }, p.cfg.name ? fmtTerm(p.id) : (p.status.last_call ? `called ${p.status.last_call}` : 'hasn\'t called yet')))))),
-            h('div', { class: 'btns', style: 'margin-top:12px' },
-                h('button', { class: 'btn small primary', type: 'button', onclick: addPhoneDialog }, 'add a phone'),
-                h('button', { class: 'btn small', type: 'button', onclick: loadPhones }, 'refresh'))),
-        h('div', { class: 'card' },
-            h('div', { class: 'overline' }, `saved configurations · ${CONFIGS_DIR}/`),
-            !phones.configs.length ? h('p', { class: 'meta' }, 'None yet. Set up one phone, then "save as a configuration" to reuse it.') : null,
-            h('ul', { class: 'file-list' }, phones.configs.map(c => h('li', { style: 'padding:8px 0' },
-                h('div', null, h('strong', null, c.name), ' ',
-                    h('span', { class: 'meta' }, `${c.tables.length} table${c.tables.length === 1 ? '' : 's'}${c.cfg.callin_interval ? ` · calls in every ${c.cfg.callin_interval} min` : ''}`)),
-                h('div', { class: 'btns' },
-                    h('button', { class: 'btn small link', type: 'button', onclick: () => applyConfigDialog(c, phones.current) }, 'apply…'),
-                    h('button', { class: 'btn small link', type: 'button', onclick: () => removeConfig(c) }, 'delete')))))));
-    const p = phones.list.find(x => x.id === phones.current);
-    const main = p ? phoneCard(p) : h('div', { class: 'card' }, h('h2', null, 'One manager, many payphones'),
-        h('p', null, 'mm_manager tells payphones apart by their terminal ID, the 10-digit number keyed in when each one is set up. A phone appears here after it first calls in, or add it yourself to prepare its tables before it does.'),
-        h('div', { class: 'btns', style: 'margin-top:16px' }, h('button', { class: 'btn primary', type: 'button', onclick: addPhoneDialog }, 'add a phone')));
-    host.append(h('div', { class: 'workspace' }, h('aside', { class: 'side' }, nav), main));
+                h('span', { class: 'meta' }, 'Deletes its folder. Its records stay in the database.'))),
+    ];
 }
 
 /* =====================================================================
@@ -3348,28 +3585,32 @@ const DB_NAMES = {
     TCALLST: 'call statistics', TPERFST: 'performance statistics', TSTATUS: 'terminal status', TSWVERS: 'software versions',
     TAUTH: 'card authorizations', TOPCODE: 'operator codes', TERMDAT: 'terminal data', TERMTYP: 'terminal types (from rom versions)',
 };
-const records = { tables: null, table: 'TCDR', offset: 0, data: null, error: '' };
+/* terminal: only this phone's rows (on its records page), or null for every phone. */
+const records = { tables: null, table: 'TCDR', offset: 0, data: null, error: '', terminal: null };
 const PAGE = 100;
 
 async function loadRecords() {
     try {
-        const r = await api('/api/db');
+        const only = records.terminal ? `&terminal=${records.terminal}` : '';
+        const r = await api('/api/db?' + only.slice(1));
         records.tables = r.exists ? r.tables : [];
         records.error = '';
         if (records.tables.length && !records.tables.some(t => t.name === records.table)) records.table = records.tables[0].name;
-        records.data = records.tables.length ? await api(`/api/db?table=${enc(records.table)}&limit=${PAGE}&offset=${records.offset}`) : null;
+        records.data = records.tables.length ? await api(`/api/db?table=${enc(records.table)}&limit=${PAGE}&offset=${records.offset}${only}`) : null;
     } catch (e) { records.error = e.message; }
     renderRecords();
 }
 
 function renderRecords() {
     const host = $('#view-records');
+    if (!host) return;
     host.replaceChildren();
     if (records.tables === null) { host.append(h('p', { class: 'meta' }, 'loading…')); loadRecords(); return; }
     const pick = t => { records.table = t; records.offset = 0; loadRecords(); };
     const nav = h('div', { class: 'card' },
         h('div', { class: 'overline' }, 'mm_manager.db'),
-        tip('mm_manager writes down what each payphone reports when it calls in: calls, alarms, cash box counts and more. Newest first.'),
+        tip(records.terminal ? 'What this phone reported when it called in: calls, alarms, cash box counts and more. Newest first.'
+            : 'mm_manager writes down what each payphone reports when it calls in: calls, alarms, cash box counts and more. Newest first.'),
         records.error ? h('p', { class: 'notice' }, `hmm, couldn't read the database: ${records.error}`) : null,
         !records.tables.length && !records.error ? h('p', null, 'Nothing yet. mm_manager makes the database the first time it starts.') : null,
         h('ul', { class: 'file-list' }, records.tables.map(t => h('li', null,
@@ -3432,7 +3673,7 @@ const GENERATORS = [
     { script: 'generate_intl_sbr.py', title: 'International set-based rating (0x97)',
         about: 'Builds the international rating table from icc_dial_codes.csv in the working folder.', args: [] },
     { script: 'generate_advert_prompts.py', title: 'Advertising messages (0x1d), from a CSV',
-        about: 'Builds the advertising table from config/advert_prompts.csv. The tables tab edits this table directly too.',
+        about: 'Builds the advertising table from config/advert_prompts.csv. Display & messages edits this table directly too.',
         args: [['--csv', 'CSV file', 'config/advert_prompts.csv'], ['--terminal', 'Only for terminal (10 digits)', '']] },
 ];
 const tools = { files: null, sub: '', gen: GENERATORS[0].script, genArgs: {} };
@@ -3440,7 +3681,7 @@ const tools = { files: null, sub: '', gen: GENERATORS[0].script, genArgs: {} };
 async function loadFiles() {
     try { tools.files = (await api(`/api/list?dir=${enc(tools.sub)}&depth=0`)).entries; }
     catch (e) { tools.files = []; toast(`hmm, couldn't list the files: ${e.message}`, 'error'); }
-    if (state.view === 'files') renderFiles();
+    if ($('#view-files')) renderFiles();
 }
 
 const fmtSize = n => n < 1024 ? `${n} bytes` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
@@ -3544,14 +3785,14 @@ function generatorCard() {
         const j = await runTask(lines, g.title);
         if (!j) return;
         const made = [...j.text.matchAll(/(?:tables\/\d+\/)?mm_table_[0-9a-f]{2}\.bin/g)].length;
-        toast(j.exitCode === 0 && made ? 'done! the new tables are in the working folder — move them into tables/ on the files tab' :
+        toast(j.exitCode === 0 && made ? 'done! the new tables are in the working folder — move them into tables/ from global → working folder' :
             /No module named '([^']+)'/.test(j.text) ? 'Python is missing a package — press "install what they need"' :
             'finished — read the output to see how it went', j.exitCode === 0 && made ? 'ok' : 'info');
         loadFiles();
     };
     card.append(
         h('p', { class: 'section-note' }, `Runs with ${info.python} in the working folder. New tables appear in the working folder, ready to move into tables/ from `,
-            h('a', { href: '#', onclick: e => { e.preventDefault(); showView('files'); } }, 'files'), '.'),
+            h('a', { href: '#', onclick: e => { e.preventDefault(); showView('global', 'files'); } }, 'working folder'), '.'),
         h('div', { class: 'fields' }, h('div', { class: 'field wide' }, h('label', { class: 'flabel', for: sel.id }, 'Generator'), sel)),
         h('p', { style: 'margin:12px 0' }, g.about, g.links ? [' Data: ', ...g.links.flatMap(([t, u], i) => [i ? ', ' : '', h('a', { href: u, target: '_blank', rel: 'noopener' }, t)]), '.'] : ''),
         fields.length ? h('div', { class: 'fields' }, fields) : null,
@@ -3566,6 +3807,7 @@ function generatorCard() {
 
 function renderFiles() {
     const host = $('#view-files');
+    if (!host) return;
     host.replaceChildren();
     if (tools.files === null && !tools.loading) { tools.loading = true; loadFiles().finally(() => { tools.loading = false; }); }
     const left = h('div', { class: 'sections' },
@@ -3577,6 +3819,7 @@ function renderFiles() {
 
 function renderGenerate() {
     const host = $('#view-generate');
+    if (!host) return;
     host.replaceChildren();
     const left = h('div', { class: 'sections' },
         tip('Local calling and area code tables are long and come from public data, so these scripts build them for you.'),
@@ -3658,6 +3901,7 @@ async function saveRoms() {
 
 function renderRoms() {
     const host = $('#view-roms');
+    if (!host) return;
     host.replaceChildren();
     const intro = h('div', { class: 'card raised' },
         h('div', { class: 'ed-head' },
@@ -3839,13 +4083,13 @@ function loadPractice() {
         const f = addFile({ path: `practice/${tableFileName(+id)}`, data: fromBase64(data) });
         Object.assign(f, { practice: true, practiceSaved: false, view: null, sel: null, brush: null });
     }
-    if (!state.current) state.current = practiceFile(0x1a);
     renderAll();
 }
 
 function removePractice() {
     state.files = state.files.filter(f => !f.practice);
-    if (!state.files.includes(state.current)) state.current = state.files[0] || null;
+    if (!state.files.includes(state.current)) state.current = null;
+    if (phones.current === PRACTICE_ID) phones.current = null;
     renderAll();
 }
 
@@ -3895,12 +4139,16 @@ const GLOSSARY = [
     ['VFD', 'The payphone\'s vacuum fluorescent display: 2 lines of 20 characters.'],
 ];
 
+const helpLink = (label, go) => h('a', { href: '#', onclick: e => { e.preventDefault(); go(); } }, label);
+
 function renderHelp() {
     const host = $('#view-help');
     host.replaceChildren();
     const openId = id => {
-        const f = state.files.find(x => x.tableId === id && x.folder === 'default') || state.files.find(x => x.tableId === id);
-        if (f) { showView('tables'); selectFile(f); }
+        const f = state.files.find(x => x.tableId === id && x.folder === 'default') || state.files.find(x => x.tableId === id && !x.practice);
+        if (f && (f.folder === 'default' || MODEL_FOLDERS.some(([m]) => m === f.folder))) openShared(id, f.folder);
+        else if (f && isTermFolder(f.folder)) openPhone(f.folder, groupOf(id).key, id);
+        else if (f) { state.current = f; showView('global', 'tablefiles'); }
     };
     const chip = id => {
         const gen = GENERATED.find(g => g[0] === id);
@@ -3914,9 +4162,9 @@ function renderHelp() {
         h('h2', { id: 'help-h-' + id }, title), ...body);
     const codes = Object.keys(TABLE_HELP);
 
-    const nav = h('nav', { class: 'card help-nav', 'aria-label': 'Help topics' },
+    const helpNav = h('nav', { class: 'card help-nav', 'aria-label': 'Help topics' },
         h('div', { class: 'overline' }, 'on this page'),
-        h('ul', null, [['start', 'start here'], ['panel', 'the control panel'], ['where', 'where tables live'], ['firmware', 'tables for your phone'],
+        h('ul', null, [['start', 'start here'], ['panel', 'finding your way'], ['where', 'shared and own settings'], ['firmware', 'tables for your phone'],
             ['guide', 'table guide'], ['generated', 'made by mm_manager'], ['safe', 'staying safe'], ['keys', 'keys and tricks'], ['glossary', 'glossary']]
             .map(([id, label]) => h('li', null, h('a', { href: '#help-' + id, onclick: e => {
                 e.preventDefault();
@@ -3930,57 +4178,45 @@ function renderHelp() {
         section('start', 'start here',
             h('ol', { class: 'steps' },
                 server
-                    ? h('li', null, h('strong', null, 'Your tables are open. '), 'The control panel opens mm_manager\'s ', h('code', null, 'tables/'),
-                        ' folder for you. ', h('em', null, 'reload tables'), ' reads it again. You can also open single ', h('code', null, 'mm_table_XX.bin'), ' files, or drop them on the page.')
-                    : h('li', null, h('strong', null, 'Open your tables. '), 'Press ', h('em', null, 'open folder'), ' and choose the ', h('code', null, 'tables/'),
-                        ' folder next to mm_manager (the one with ', h('code', null, 'default/'), ' inside). You can also open single ', h('code', null, 'mm_table_XX.bin'),
-                        ' files, or drop them on the page.'),
-                h('li', null, h('strong', null, 'Pick a table. '), 'The list shows a short code and a plain name for each. The table guide below says what each one does.'),
-                h('li', null, h('strong', null, 'Change it. '), 'Notes under each field give the units and the allowed range. A field with a dashed pink border isn\'t stored until you fix it.'),
-                h('li', null, h('strong', null, 'Save. '), server
-                    ? 'Save writes the file straight into the tables folder, in any browser.'
-                    : 'In Chrome and Edge, save writes the file back in place. Other browsers download it; copy it into the same folder.'),
-                server ? h('li', null, h('strong', null, 'Start mm_manager. '), 'In ', h('a', { href: '#', onclick: e => { e.preventDefault(); showView('manager'); } }, 'manager → settings'),
-                    ', fill in how the payphone calls in and the number it dials, then press ', h('em', null, 'start mm_manager'), '.') : null,
+                    ? h('li', null, h('strong', null, 'Set up mm_manager. '), 'Under ', helpLink('global → connection', () => showView('global', 'connection')),
+                        ', say how the payphone calls in (SIP or a modem), and under ', helpLink('numbers & codes', () => showView('global', 'numbers')), ' the number it dials.')
+                    : h('li', null, h('strong', null, 'Open your tables. '), 'Under ', helpLink('global → table files', () => showView('global', 'tablefiles')), ', press ', h('em', null, 'open folder'),
+                        ' and choose the ', h('code', null, 'tables/'), ' folder next to mm_manager (the one with ', h('code', null, 'default/'), ' inside).'),
+                h('li', null, h('strong', null, 'Set what every phone gets. '), 'Under ', h('em', null, 'global'), ', the settings for every phone are grouped by what they do: display & messages, prices, free numbers and so on.'),
+                h('li', null, h('strong', null, 'Make one phone different. '), 'Pick a phone under ', h('em', null, 'phones'),
+                    ' and change a setting there: that phone gets its own copy, and the others keep the shared one. Tick several phones to change a field on all of them at once.'),
+                h('li', null, h('strong', null, 'Save. '), 'Notes under each field give the units and the allowed range. A field with a dashed pink border isn\'t stored until you fix it. ', server
+                    ? 'Save writes straight into the tables folder.'
+                    : 'In Chrome and Edge, save writes the file back in place. Other browsers download it; copy it into the folder it names.'),
+                server ? h('li', null, h('strong', null, 'Start mm_manager. '), 'Under ', helpLink('manager', () => showView('manager', 'run')), ', press ', h('em', null, 'start mm_manager'), '.') : null,
                 h('li', null, h('strong', null, 'Let the payphone pick it up. '), 'mm_manager sends tables when the terminal calls in for them. To get them sooner, use ',
                     h('em', null, 'force download'), ' in the payphone\'s craft menu. mm_manager then sends the tables that changed (all of them with ', h('code', null, '-c'), ').'))),
-        section('panel', 'the control panel',
-            server ? [
-                h('p', null, 'This page is being served by ', h('code', null, 'mm_gui'), ', from the working folder ', h('code', null, server.info ? server.info.root : ''),
-                    '. That folder holds ', h('code', null, 'tables/'), ', ', h('code', null, 'config/'), ' and ', h('code', null, 'mm_manager.db'), ', and mm_manager runs there.'),
-                h('ul', null,
-                    h('li', null, h('strong', null, 'tables: '), h('em', null, 'edit tables'), ' opens and saves the files in ', h('code', null, 'tables/'), '. ',
-                        h('em', null, 'make from public data'), ' runs the table generators, which build local calling and area code tables. They need Python 3, and ',
-                        h('em', null, 'install what they need'), ' fetches their packages.'),
-                    h('li', null, h('strong', null, 'phones: '), h('em', null, 'payphones'), ' lists every payphone by its terminal ID (the 10-digit number keyed in when it was set up; change it here when it changes on the phone). Name each one, set how often it calls in, see whether its last update went through, ',
-                        'and save one phone\'s tables as a named configuration to apply to others. A failed update is retried: the phone gets every table at its next call. ',
-                        h('em', null, 'records'), ' shows what payphones reported when they called in: calls, alarms, cash box counts, software versions. Save rows as CSV, or download the database.'),
-                    h('li', null, h('strong', null, 'manager: '), 'in ', h('em', null, 'settings'), ', choose SIP or a serial modem (', h('em', null, 'find modems'), ' scans the serial ports), then ', h('em', null, 'start mm_manager'),
-                        '. Its output scrolls by beside the settings. It keeps running when you close the page; the button at the top of every tab shows its state and takes you back. To change a setting, stop it, change it, start it again. ',
-                        h('em', null, 'rom versions'), ' opens ', h('code', null, 'config/control_rom_versions.csv'), ' directly. mm_manager reads it when it starts, so restart it after a change.'),
-                    h('li', null, h('strong', null, 'files: '), 'the working folder: download, upload, delete, turn a ', h('code', null, '.dlog'), ' into a ', h('code', null, '.pcap'),
-                        ', and move generated tables into ', h('code', null, 'tables/'), '.'),
-                    h('li', null, h('strong', null, 'quitting: '), h('em', null, 'quit the control panel'), ' at the bottom of manager → settings, or close the mm_gui window. Either one stops mm_manager too.')),
-                h('p', { class: 'meta' }, 'Only this computer can reach the control panel, and only this page can use it. The SIP password goes to mm_manager without being saved anywhere; type it again after a reload.'),
-            ] : [
-                h('p', null, 'Opened straight from a file, this page edits tables and builds the mm_manager command for a terminal. To skip the terminal entirely, start ',
-                    h('code', null, 'mm_gui'), ' instead (double-click it, next to mm_manager). It opens this page in your browser with more to it:'),
-                h('ul', null,
-                    h('li', null, 'tables open and save straight into mm_manager\'s folder, in any browser'),
-                    h('li', null, 'a start button for mm_manager, with its output live on the page'),
-                    h('li', null, 'table generators that build local calling and area code tables from public data'),
-                    h('li', null, 'phones: several payphones, each with its own tables and call-in schedule, saved configurations to share between them, and the calls, alarms and cash box counts they report'),
-                    h('li', null, 'a modem scan, and the working folder\'s log and capture files')),
-            ]),
-        section('where', 'where tables live',
-            h('p', null, 'For each table, mm_manager uses the first file it finds in:'),
+        section('panel', 'finding your way',
+            h('ul', null,
+                h('li', null, h('strong', null, 'phones: '), 'every payphone, by its terminal ID (the 10-digit number keyed in when it was set up). Pick one to see its ',
+                    h('em', null, 'overview'), server ? ' (name, how often it calls in, whether its last update went through, saved configurations)' : '',
+                    ', then its settings group by group', server ? ', and what it reported (records)' : '', '. Each setting is marked ', h('span', { class: 'src shared' }, 'shared'), ' or ',
+                    h('span', { class: 'src own' }, 'this phone only'), '. Tick two or more phones and press ', h('em', null, 'edit together'),
+                    ' to change the same fields on all of them: each keeps its other settings.'),
+                h('li', null, h('strong', null, 'global: '), 'what every phone shares, with a switch to give one model of phone (coin, card-only…) its own version; mm_manager\'s options; the ',
+                    'control ROM list', server ? '; saved configurations; table generators that build local calling and area code tables from public data; the working folder' : '',
+                    '; and every table file, folder by folder', server ? '; and quitting the control panel' : '', '.'),
+                h('li', null, h('strong', null, 'manager: '), server
+                    ? ['start and stop mm_manager and watch its output, and read the records from every phone. It keeps running when you close the page; the button at the top shows its state. To change a setting, stop it, change it under global, start it again.']
+                    : ['the command line that starts mm_manager with your settings. Start ', h('code', null, 'mm_gui'), ' instead to get a start button, phone status and records.']),
+                h('li', null, h('strong', null, 'help: '), 'this page.')),
+            server ? h('p', { class: 'meta' }, 'This page is served by ', h('code', null, 'mm_gui'), ' from ', h('code', null, server.info ? server.info.root : ''),
+                '. Only this computer can reach it, and only this page can use it. The SIP password goes to mm_manager without being saved anywhere; type it again after a reload.') : null),
+        section('where', 'shared and own settings',
+            h('p', null, 'For each table, mm_manager sends a phone the first file it finds in:'),
             h('ol', null,
-                h('li', null, h('code', null, 'tables/<terminal number>/'), ' — just for one payphone, named after its 10-digit number'),
-                h('li', null, h('code', null, 'tables/<model>/'), ' — ', h('code', null, 'multipay'), ', ', h('code', null, 'card_only'), ', ', h('code', null, 'desk'),
-                    ', ', h('code', null, 'coin'), ' or ', h('code', null, 'inmate')),
-                h('li', null, h('code', null, 'tables/default/'), ' — everything else')),
-            h('p', null, 'So to give one payphone its own advertising messages, open its table and press ', h('em', null, 'copy for a terminal'),
-                '. The folders can be changed with ', h('code', null, '-t'), ' and ', h('code', null, '-d'), ' in manager → settings.')),
+                h('li', null, h('code', null, 'tables/<terminal ID>/'), ' — that phone only (', h('em', null, 'this phone only'), ' on the phones page)'),
+                h('li', null, h('code', null, 'tables/<model>/'), ' — every phone of that model: ', h('code', null, 'multipay'), ', ', h('code', null, 'card_only'), ', ', h('code', null, 'desk'),
+                    ', ', h('code', null, 'coin'), ' or ', h('code', null, 'inmate'), ' (the switch at the top of a global settings page)'),
+                h('li', null, h('code', null, 'tables/default/'), ' — every phone (', h('em', null, 'all phones'), ' under global)')),
+            h('p', null, 'So changing a setting on a phone saves a copy in its folder, and ', h('em', null, 'go back to the shared version'),
+                ' deletes that copy again. A page for all phones lists which phones get the file and which have their own. The folders can be changed under ',
+                helpLink('global → sending tables', () => showView('global', 'sending')), '.')),
         section('firmware', 'tables for your phone',
             h('p', null, 'mm_manager sends a different set of tables to each firmware generation (MTR). It prints the terminal type and firmware when a payphone calls in. Coin-only phones skip the card tables; card-only and desk phones skip coin validation; ',
                 h('code', null, '-s'), ' sends only the required tables.'),
@@ -4001,7 +4237,7 @@ function renderHelp() {
             }))),
         section('generated', 'made by mm_manager',
             h('p', null, 'These tables are built on every download instead of being read from files, so you change them with command-line options in ',
-                h('a', { href: '#', onclick: e => { e.preventDefault(); showView('manager'); } }, 'manager → settings'), '.'),
+                helpLink('global → sending tables', () => showView('global', 'sending')), '.'),
             h('ul', { class: 'gen-list' }, GENERATED.map(([id, code, name, how]) => h('li', null,
                 h('div', null, h('span', { class: 'badge paper' }, `${hexId(id)} ${code}`), ' ', h('strong', null, name)), h('div', { class: 'meta' }, how))))),
         section('safe', 'staying safe',
@@ -4021,7 +4257,7 @@ function renderHelp() {
         section('glossary', 'glossary',
             h('dl', { class: 'glossary' }, GLOSSARY.map(([t, d]) => [h('dt', null, t), h('dd', null, d)]))));
 
-    host.append(h('div', { class: 'help-grid' }, h('div', { class: 'side' }, nav), body));
+    host.append(h('div', { class: 'help-grid' }, h('div', { class: 'side' }, helpNav), body));
 }
 
 /* =====================================================================
@@ -4040,12 +4276,12 @@ function showWelcome() {
             : h('p', null, 'This page edits the tables mm_manager sends to a Nortel Millennium payphone: the messages on its display, prices, free numbers, cards and more. It also builds the command that starts mm_manager.'),
         server
             ? h('ol', { class: 'steps compact' },
-                h('li', null, 'Your ', h('code', null, 'tables/'), ' folder is already open. Pick a table, change it and save: it is written straight back.'),
-                h('li', null, 'In ', h('em', null, 'manager'), ', say how the payphone calls in (SIP or a modem) and the number it dials, then press ', h('em', null, 'start mm_manager'), '.'),
-                h('li', null, 'Watch calls come in on ', h('em', null, 'manager'), ', and see each payphone and what it reported on ', h('em', null, 'phones'), '. ', h('em', null, 'files'), ' has the working folder.'))
+                h('li', null, 'Under ', h('em', null, 'global'), ', say how the payphone calls in (SIP or a modem) and the number it dials, and set what every phone gets.'),
+                h('li', null, 'Under ', h('em', null, 'manager'), ', press ', h('em', null, 'start mm_manager'), '.'),
+                h('li', null, 'Under ', h('em', null, 'phones'), ', see each payphone, what it reported, and anything that should be different for it alone.'))
             : h('ol', { class: 'steps compact' },
-                h('li', null, 'Open your ', h('code', null, 'tables/'), ' folder, or a few ', h('code', null, '.bin'), ' files.'),
-                h('li', null, 'Pick a table and change it with the form.'),
+                h('li', null, 'Under ', h('em', null, 'global → table files'), ', open your ', h('code', null, 'tables/'), ' folder.'),
+                h('li', null, 'Change what every phone gets under ', h('em', null, 'global'), ', or what one phone gets under ', h('em', null, 'phones'), '.'),
                 h('li', null, 'Save. The payphone gets the new table the next time it downloads.')),
         h('p', { class: 'meta' }, server
             ? 'Only this computer can reach the control panel. Leave the mm_gui window open while you use it. New here? The tour takes about four minutes and uses practice tables.'
@@ -4054,8 +4290,8 @@ function showWelcome() {
         h('div', { class: 'btns', style: 'justify-content:flex-start' },
             h('button', { class: 'btn primary', type: 'button', onclick: go(startTour) }, 'show me around'),
             server
-                ? h('button', { class: 'btn', type: 'button', onclick: go(() => showView('manager')) }, 'set up mm_manager')
-                : h('button', { class: 'btn', type: 'button', onclick: go(() => { showView('tables'); openFolder(); }) }, 'open my tables'),
+                ? h('button', { class: 'btn', type: 'button', onclick: go(() => showView('global', 'connection')) }, 'set up mm_manager')
+                : h('button', { class: 'btn', type: 'button', onclick: go(() => { showView('global', 'tablefiles'); openFolder(); }) }, 'open my tables'),
             h('button', { class: 'btn link', type: 'button', onclick: go(() => showView('help')) }, 'read the guide'),
             h('button', { class: 'btn link', type: 'button', onclick: go(null) }, 'skip'))));
     dlg.showModal();
@@ -4069,29 +4305,32 @@ function showWelcome() {
 const q = sel => document.querySelector(sel);
 const isCurrent = id => !!state.current && state.current === practiceFile(id);
 const setInput = (el, value, type = 'input') => { if (!el) return; el.value = value; el.dispatchEvent(new Event(type, { bubbles: true })); };
+/* Show a practice table on the practice phone, with some editor state (e.g. { view: 'bytes' }). */
 const ensureFile = (id, extra = {}) => () => {
-    showView('tables');
     const f = practiceFile(id);
     if (!f) return;
-    let rerender = state.current !== f;
+    const section = groupOf(id).key;
+    let rerender = nav.view !== 'phones' || phones.current !== PRACTICE_ID || nav.bulk || nav.phoneSection !== section || state.current !== f;
     for (const [k, v] of Object.entries(extra)) if (f[k] !== v) { f[k] = v; rerender = true; }
-    state.current = f;
-    if (rerender) renderAll();
+    if (rerender) { phones.current = PRACTICE_ID; nav.bulk = false; nav.phoneSection = section; nav.table[`p:${section}`] = id; nav.view = 'phones'; renderView(); }
 };
+const onPractice = () => nav.view === 'phones' && phones.current === PRACTICE_ID && !nav.bulk;
 const ADMESS_AT = (i, key) => i * ADMESS_ENTRY.size + ADMESS_ENTRY.map[key].o;
 
 /* Steps marked server only appear when mm_gui serves the page; local only, when it doesn't. */
 const TOUR_STEPS = [
-    { title: 'welcome to the tour', body: 'We\'ve opened three practice tables in a practice/ folder. Try anything: they only live in this tab, and saving them doesn\'t write a file. The page still works while the tour runs, so you\'ll press the real buttons.' },
-    { before: () => showView('tables'), target: () => q('#file-list'), title: 'your tables',
-        body: server
-            ? 'Open tables are listed here, grouped by folder. Your real tables/ folder is listed too: default/, the model folders and a folder for each terminal number. "reload tables" reads them again.'
-            : 'Open tables are listed here, grouped by folder. With your real tables/ folder you\'d see default/, the model folders and a folder for each terminal number.' },
-    { before: () => showView('tables'), target: () => q('.file-item[data-path="practice/mm_table_1d.bin"]'), title: 'pick a table',
-        body: 'Each table has a short code, like ADMESS, and a plain name.', task: 'click "Advertising messages".',
-        check: () => isCurrent(0x1d), auto: true, doIt: () => selectFile(practiceFile(0x1d)) },
+    { title: 'welcome to the tour', body: 'We\'ve added a practice phone with three sample tables. Try anything: they only live in this tab, and saving them doesn\'t write a file. The page still works while the tour runs, so you\'ll press the real buttons.' },
+    { before: () => { if (nav.view !== 'phones') showView('phones'); }, target: () => q('#tab-phones'), title: 'the rail',
+        body: 'Four places: phones, one by one; global, what every phone shares and how mm_manager runs; manager, to run it; and help.' },
+    { before: () => { if (nav.view !== 'phones') showView('phones'); }, target: () => q('[data-phone="practice"] .tree-btn'), title: 'pick a phone',
+        body: 'Every payphone is listed by name or terminal ID, with a dot for how its last call went.', task: 'click "practice phone".',
+        check: onPractice, auto: true, doIt: () => openPhone(PRACTICE_ID, 'overview') },
+    { before: () => { if (!onPractice()) openPhone(PRACTICE_ID); }, target: () => q('[data-phone="practice"] > .tree'), title: 'what a phone gets',
+        body: 'A phone\'s settings are grouped by what they do. On a real phone, each one says whether it is shared with other phones or the phone\'s own.',
+        task: 'open "Display & messages".', check: () => onPractice() && nav.phoneSection === 'display', auto: true,
+        doIt: () => { nav.phoneSection = 'display'; renderView(); } },
     { before: ensureFile(0x1d), target: () => q('#editor .card.raised'), title: 'the table header',
-        body: 'The table ID and file name, and the buttons to save, download or copy it for one terminal. An "edited" sticker appears as soon as you change something.' },
+        body: 'What this table is, and the buttons to save or download it. An "edited" sticker appears as soon as you change something. On a real phone, changing a shared table here gives this phone its own copy.' },
     { before: ensureFile(0x1d, { view: 'fields' }), target: () => q('[data-tour="entries"]'), title: 'entries',
         body: 'List tables have one row per entry. The form below the list edits the row you pick.', task: 'click the row for message 3.',
         check: () => isCurrent(0x1d) && state.current.sel === 3, auto: true, doIt: () => { state.current.sel = 3; renderEditor(); } },
@@ -4108,15 +4347,15 @@ const TOUR_STEPS = [
         check: snap => practiceFile(0x1d).bytes[ADMESS_AT(3, 'display_attr')] !== snap, auto: true,
         doIt: () => { const sel = q('[data-key="display_attr"] select'); setInput(sel, sel.value === '3' ? '1' : '3', 'change'); } },
     { before: ensureFile(0x1d), target: () => q('#ed-dirty'), title: 'edited, not saved',
-        body: 'Your change lives in this tab until you save. A ● in the list marks every table with unsaved changes, and "save all changes" saves them together.' },
+        body: 'Your change lives in this tab until you save.' },
     { before: ensureFile(0x1d), target: () => q('#editor .subtabs [data-view="bytes"]'), title: 'under the hood',
         body: 'Every table can also be edited byte by byte: handy for tables nobody has documented yet.', task: 'click "bytes".',
         check: () => isCurrent(0x1d) && state.current.view === 'bytes', auto: true, doIt: () => { state.current.view = 'bytes'; renderEditor(); } },
     { before: ensureFile(0x1d, { view: 'bytes' }), target: () => q('[data-tour="hex"]'), title: 'bytes',
         body: 'Your edits are highlighted in yellow. Hover over or focus a byte to see which field it belongs to.' },
-    { before: () => showView('tables'), target: () => q('.file-item[data-path="practice/mm_table_88.bin"]'), title: 'maps',
-        body: 'Local call tables are easier to read as a map.', task: 'open "Double-compressed LCD 1".',
-        check: () => isCurrent(0x88), auto: true, doIt: () => selectFile(practiceFile(0x88)) },
+    { before: () => { if (!onPractice()) openPhone(PRACTICE_ID); }, target: () => q('[data-phone="practice"] > .tree'), title: 'maps',
+        body: 'Local calling tables are easier to read as a map.', task: 'open "Local & long distance".',
+        check: () => onPractice() && nav.phoneSection === 'local', auto: true, doIt: () => { nav.phoneSection = 'local'; renderView(); } },
     { before: ensureFile(0x88, { view: 'fields' }), target: () => q('[data-tour="palette"]'), title: 'pick a value',
         body: 'Each exchange in this area code is local, toll or invalid. First pick what to paint with.', task: 'choose "intra-LATA toll".',
         check: () => isCurrent(0x88) && state.current.brush === 2, auto: true, doIt: () => q('[data-tour="palette"] button:nth-child(3)').click() },
@@ -4126,37 +4365,30 @@ const TOUR_STEPS = [
         doIt: () => { for (const n of [200, 201, 202]) q(`.cell[data-n="${n}"]`).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })); } },
     { before: ensureFile(0x88), target: () => q('[data-tour="save"]'), title: 'save',
         body: server
-            ? 'For your real tables, save writes the file straight into mm_manager\'s tables/ folder, and the payphone gets it on its next download. This one is practice, so nothing is written.'
-            : 'With a real folder open in Chrome or Edge, save writes the file back in place; elsewhere it downloads the file for you to copy into tables/. This one is practice, so nothing is written.',
+            ? 'For a real phone, save writes the file straight into mm_manager\'s tables/ folder, and the payphone gets it on its next download. This one is practice, so nothing is written.'
+            : 'With your tables/ folder open in Chrome or Edge, save writes the file back in place; elsewhere it downloads the file for you to copy into tables/. This one is practice, so nothing is written.',
         task: 'press save.', check: () => isCurrent(0x88) && state.current.practiceSaved, auto: true, doIt: () => saveFile(state.current) },
-    { target: () => q('.tabs .tab[data-view="manager"]'), title: 'starting mm_manager',
-        body: server
-            ? 'Some settings aren\'t in table files: they are how mm_manager itself runs. This is also where you start it.'
-            : 'Some settings aren\'t in table files: they are options on mm_manager\'s command line.', task: 'open "manager".',
-        check: () => state.view === 'manager', auto: true, doIt: () => showView('manager') },
-    { before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-mgr="ncc1"]'), title: 'the number to call',
-        body: 'The primary NCC number is what the payphone dials to reach this manager. mm_manager writes it into the terminal on every download. Your own settings come back when the tour ends.',
+    { before: () => { if (nav.view !== 'phones') showView('phones'); }, target: () => q('[data-tour="phone-list"]'), title: 'several phones at once',
+        body: 'Tick two or more phones and press "edit together". Change a field, say message 3, and it goes to every ticked phone; each keeps its other settings.' },
+    { target: () => q('#tab-global'), title: 'what every phone shares',
+        body: 'Most settings are the same for every phone, so they live under global. A phone only has its own when you change it on its page.', task: 'open "global".',
+        check: () => nav.view === 'global', auto: true, doIt: () => showView('global') },
+    { before: () => { if (nav.view !== 'global') showView('global'); }, target: () => q('[data-tour="global-tree"]'), title: 'global',
+        body: 'The same groups as on a phone, for all phones or for one model, and below them how mm_manager itself runs.',
+        task: 'open "numbers & codes".', check: () => nav.view === 'global' && nav.global === 'numbers', auto: true, doIt: () => showView('global', 'numbers') },
+    { before: () => { if (nav.view !== 'global' || nav.global !== 'numbers') showView('global', 'numbers'); }, target: () => q('[data-mgr="ncc1"]'), title: 'the number to call',
+        body: 'The primary NCC number is what the payphone dials to reach this manager. mm_manager writes it into every phone on every download. Your own settings come back when the tour ends.',
         task: 'type a number, e.g. 18005551234.', check: () => /^\d{1,15}$/.test(mgr.ncc1 || ''),
         doIt: () => setInput(q('[data-mgr="ncc1"] input'), '18005551234') },
-    { local: true, before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-tour="command"]'), title: 'your command',
-        body: 'This updates as you type. Copy it and run it from the folder that holds mm_manager and tables/. Anything missing is listed under it. (Start mm_gui instead, and this page gets a start button.)' },
-    { server: true, before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-tour="run"]'), title: 'start and stop',
-        body: '"start mm_manager" runs it with these settings, and its output scrolls by here. It keeps running if you close this page; stop it here, or quit the control panel. The button at the top of every tab shows whether it is running. We won\'t start it now.' },
-    { server: true, before: () => { if (!['phones', 'records'].includes(state.view)) showView('phones'); }, target: () => q('#subnav [data-view="records"]'),
-        title: 'what the payphones said',
-        body: 'The phones tab lists every payphone. Each time one calls in, mm_manager also stores what it reports: calls, alarms, cash box counts, software versions.', task: 'open "records".',
-        check: () => state.view === 'records', auto: true, doIt: () => showView('records') },
-    { server: true, before: () => { if (state.view !== 'records') showView('records'); }, target: () => q('#view-records .side'), title: 'records',
-        body: 'Pick a kind of record to see it, newest first. You can save the rows as a CSV, or download the whole database.' },
-    { server: true, target: () => q('.tabs .tab[data-view="files"]'), title: 'files',
-        body: 'Everything else in the working folder.', task: 'open "files".',
-        check: () => state.view === 'files', auto: true, doIt: () => showView('files') },
-    { server: true, before: () => { if (state.view !== 'files') showView('files'); }, target: () => q('[data-tour="files"]'), title: 'the working folder',
-        body: 'Download logs and captures, turn a .dlog transcript into a .pcap for Wireshark, upload data files, and move generated tables into tables/.' },
-    { server: true, before: () => { if (state.view !== 'generate') showView('generate'); }, target: () => q('[data-tour="generators"]'), title: 'make tables from public data',
-        body: 'Under tables, the generators make local calling and area code tables from public data (they need Python). What they make lands in the working folder.' },
-    { target: () => q('.tabs .tab[data-view="help"]'), title: 'that\'s the tour!',
-        body: 'The help tab has the full guide: which tables each firmware gets, what every table does, and a glossary. The dashed hints and table notes can be switched off with "hints" at the top.', last: true },
+    { target: () => q('#tab-manager'), title: server ? 'running it' : 'your command',
+        body: server ? 'Start and stop mm_manager here, and watch its output.' : 'Here is the command that starts mm_manager with these settings.', task: 'open "manager".',
+        check: () => nav.view === 'manager', auto: true, doIt: () => showView('manager', 'run') },
+    { local: true, before: () => { if (nav.view !== 'manager') showView('manager', 'run'); }, target: () => q('[data-tour="command"]'), title: 'your command',
+        body: 'Copy it and run it from the folder that holds mm_manager and tables/. (Start mm_gui instead, and this page gets a start button.)' },
+    { server: true, before: () => { if (nav.view !== 'manager') showView('manager', 'run'); }, target: () => q('[data-tour="run"]'), title: 'start and stop',
+        body: '"start mm_manager" runs it with your settings, and its output scrolls by here. It keeps running if you close this page; stop it here, or quit the control panel. The button at the top shows whether it is running. We won\'t start it now.' },
+    { target: () => q('#tab-help'), title: 'that\'s the tour!',
+        body: 'Help has the full guide: which tables each firmware gets, what every table does, and a glossary. The dashed hints and table notes can be switched off with "hints" at the top.', last: true },
 ].filter(st => (server ? !st.local : !st.server));
 
 const tour = { i: -1, timer: null, done: false, snap: null, autoTimer: null, mgrBefore: null };
@@ -4187,7 +4419,7 @@ function endTour(keepPractice = true) {
         Object.assign(mgr, tour.mgrBefore);
         saveMgr();
         tour.mgrBefore = null;
-        if (state.view === 'manager') renderManager();
+        if (nav.view === 'global' || nav.view === 'manager') renderView();
     }
     if (!keepPractice) removePractice();
     safeStorage(s => s.setItem('mmTableEditor.onboarded', '1'));
@@ -4281,43 +4513,593 @@ function placeTour() {
 }
 
 /* =====================================================================
- * App shell
+ * App shell: the rail (phones, global, manager, help) and its pages
  * ===================================================================== */
 
-function renderAll() {
-    renderSidebar();
+const VIEWS = ['phones', 'global', 'manager', 'help'];
+/* What is on screen. Saved, so a reload comes back to the same place. */
+const nav = Object.assign({ view: 'phones', phoneSection: 'overview', global: 'shared:display', sharedFolder: 'default', manager: 'run',
+    bulkSection: 'callin', table: {} }, safeStorage(s => JSON.parse(s.getItem('mmTableEditor.nav') || '{}'), {}));
+nav.checked = new Set();
+nav.bulk = false;
+const saveNav = () => safeStorage(s => s.setItem('mmTableEditor.nav', JSON.stringify({ ...nav, checked: undefined, bulk: undefined })));
+/* The page being shown: its scope (for source badges) and what to do after an edit. */
+const page = { scope: null, onEdit: null };
+
+const PHONE_SECTIONS = id => [['overview', 'overview'], ...SETTING_GROUPS.map(g => [g.key, g.title]), ...(server && id !== PRACTICE_ID ? [['records', 'records']] : [])];
+const GLOBAL_SECTIONS = () => [
+    ['for every phone', SETTING_GROUPS.map(g => ['shared:' + g.key, g.title])],
+    ['mm_manager', [['connection', 'connection'], ['numbers', 'numbers & codes'], ['callin', 'calling in & updates'],
+        ['sending', 'sending tables'], ['logs', 'logs & debugging'], ['roms', 'rom versions']]],
+    ['this control panel', [...(server ? [['configurations', 'saved configurations'], ['generate', 'make tables from public data'],
+        ['files', 'working folder']] : []), ['tablefiles', 'table files'], ...(server ? [['panel', 'about & quit']] : [])]],
+];
+const MANAGER_SECTIONS = () => server ? [['run', 'run mm_manager'], ['records', 'records from all phones']] : [['run', 'command line']];
+
+/* Put the shared table list and editor back where they wait, before a page is cleared. */
+function park() {
+    const p = $('#parking');
+    p.append($('#files-side'), $('#editor'));
+}
+
+function treeBtn(label, current, onclick, extra = {}) {
+    return h('button', { class: 'tree-btn', type: 'button', 'aria-current': current ? 'true' : 'false', onclick, ...extra },
+        extra.dot || null, h('span', { class: 'grow' }, label, extra.sub ? h('span', { class: 'sub' }, extra.sub) : null), extra.count || null);
+}
+
+function renderView() {
+    const host = $('#shell-main');
+    park();
+    host.replaceChildren();
+    page.scope = null; page.onEdit = null;
+    state.edCtx = null;
+    document.querySelectorAll('.rail .rail-btn').forEach(b => b.setAttribute('aria-selected', b.dataset.view === nav.view ? 'true' : 'false'));
+    host.setAttribute('aria-labelledby', 'tab-' + nav.view);
+    if (nav.view === 'phones') renderPhonesView(host);
+    else if (nav.view === 'global') renderGlobalView(host);
+    else if (nav.view === 'manager') renderManagerView(host);
+    else { host.append(h('div', { id: 'view-help' })); renderHelp(); }
+    saveNav();
+}
+
+function showView(view, section) {
+    if (!VIEWS.includes(view)) view = 'phones';
+    nav.view = view;
+    if (section) {
+        if (view === 'phones') nav.phoneSection = section;
+        if (view === 'global') nav.global = section;
+        if (view === 'manager') nav.manager = section;
+    }
+    state.view = view;
+    renderView();
+    $('#shell-main').scrollIntoView({ block: 'nearest' });
+}
+
+/* Open one phone (or the practice phone) at a section. */
+function openPhone(id, section, tableId) {
+    phones.current = id;
+    nav.bulk = false;
+    if (section) nav.phoneSection = section;
+    if (tableId != null) nav.table[`p:${section}`] = tableId;
+    showView('phones');
+}
+
+/* Open a table for every phone (or a model's phones). */
+function openShared(tableId, folder = 'default') {
+    nav.sharedFolder = folder;
+    nav.table[`s:${groupOf(tableId).key}`] = tableId;
+    showView('global', 'shared:' + groupOf(tableId).key);
+}
+
+/* ---- phones ---- */
+
+function phoneDot(id) {
+    if (id === PRACTICE_ID) return h('span', { class: 'status-dot wait', title: 'practice' });
+    const p = phoneRecord(id);
+    if (!p) return h('span', { class: 'status-dot' });
+    const failed = /failed/.test(p.status.last_update || '');
+    const [cls, title] = failed ? ['bad', 'last update failed'] : p.pending ? ['wait', 'update waiting'] : p.status.last_call ? ['ok', 'called in'] : ['', 'hasn\'t called yet'];
+    return h('span', { class: 'status-dot ' + cls, title, 'aria-label': title, role: 'img' });
+}
+
+function phoneSub(id) {
+    if (id === PRACTICE_ID) return 'sample tables for the tour';
+    const p = phoneRecord(id);
+    const parts = [p && p.cfg.name ? fmtTerm(id) : null, p ? (p.pending ? 'update waiting' : p.status.last_call ? `called ${p.status.last_call}` : 'hasn\'t called yet') : null];
+    return parts.filter(Boolean).join(' · ');
+}
+
+function sectionTree(sections, current, go) {
+    return h('ul', { class: 'tree' }, sections.map(([key, label]) => h('li', null, treeBtn(label, key === current, () => go(key)))));
+}
+
+function phonesPanel() {
+    const ids = phoneIds();
+    if (state.files.some(f => f.practice)) ids.unshift(PRACTICE_ID);
+    nav.checked = new Set([...nav.checked].filter(id => ids.includes(id) && id !== PRACTICE_ID));
+    if (nav.bulk && nav.checked.size < 2) nav.bulk = false;
+    const card = h('div', { class: 'card' }, h('div', { class: 'overline' }, `phones · ${ids.filter(i => i !== PRACTICE_ID).length}`));
+    if (server && phones.error) card.append(h('p', { class: 'notice' }, `hmm, couldn't read the phone folders: ${phones.error}`));
+    const n = nav.checked.size;
+    if (n) {
+        card.append(h('div', { class: 'notice', style: 'margin:0 0 12px' },
+            h('p', null, h('strong', null, `${n} phone${n === 1 ? '' : 's'} ticked`)),
+            h('div', { class: 'btns' },
+                nav.bulk ? h('button', { class: 'btn small', type: 'button', onclick: () => { nav.bulk = false; renderView(); } }, 'back to one phone')
+                    : h('button', { class: 'btn small primary', type: 'button', disabled: n < 2, onclick: () => { nav.bulk = true; renderView(); } },
+                        n < 2 ? 'tick one more to edit together' : `edit ${n} together`),
+                h('button', { class: 'btn small link', type: 'button', onclick: () => { nav.checked.clear(); nav.bulk = false; renderView(); } }, 'clear'))));
+        if (nav.bulk) card.append(sectionTree([['callin', 'calling in & updates'], ...SETTING_GROUPS.map(g => [g.key, g.title])], nav.bulkSection,
+            key => { nav.bulkSection = key; renderView(); }));
+    }
+    const list = h('ul', { class: 'tree', 'data-tour': 'phone-list' });
+    for (const id of ids) {
+        const cb = id === PRACTICE_ID ? h('span', { style: 'width:30px;flex:none' }) : h('input', { type: 'checkbox', checked: nav.checked.has(id), 'aria-label': `tick ${phoneName(id)} to edit it with others` });
+        if (id !== PRACTICE_ID) cb.addEventListener('change', () => { cb.checked ? nav.checked.add(id) : nav.checked.delete(id); renderView(); });
+        const open = id === phones.current && !nav.bulk;
+        list.append(h('li', { 'data-phone': id },
+            h('div', { class: 'phone-row' }, cb, treeBtn(phoneName(id), open, () => openPhone(id), { dot: phoneDot(id), sub: phoneSub(id) })),
+            open ? sectionTree(PHONE_SECTIONS(id), nav.phoneSection, key => { nav.phoneSection = key; renderView(); }) : null));
+    }
+    if (!ids.length) list.append(h('li', null, h('p', { class: 'meta', style: 'margin:8px 4px' }, server
+        ? 'No phones yet. They appear by themselves after they first call in, or add one now.'
+        : state.root ? 'No phone folders in this tables/ folder yet.' : 'Open your tables/ folder to see your phones.')));
+    card.append(list, h('div', { class: 'btns', style: 'margin-top:12px' },
+        server ? h('button', { class: 'btn small', type: 'button', onclick: addPhoneDialog }, 'add a phone')
+            : state.root ? h('button', { class: 'btn small', type: 'button', onclick: addLocalPhoneDialog }, 'add a phone')
+            : h('button', { class: 'btn small primary', type: 'button', onclick: openFolder }, 'open tables/ folder'),
+        server ? h('button', { class: 'btn small link', type: 'button', onclick: refreshAfterPhoneChange }, 'refresh') : null,
+        ids.length > 2 ? h('button', { class: 'btn small link', type: 'button', onclick: () => {
+            const all = ids.filter(i => i !== PRACTICE_ID);
+            nav.checked = nav.checked.size === all.length ? new Set() : new Set(all);
+            renderView();
+        } }, nav.checked.size === ids.filter(i => i !== PRACTICE_ID).length ? 'untick all' : 'tick all') : null));
+    return h('div', { class: 'pane-nav' }, card);
+}
+
+function renderPhonesView(host) {
+    if (server && phones.list === null) { host.append(h('p', { class: 'meta' }, 'loading…')); loadPhones(); return; }
+    const ids = phoneIds();
+    const hasPractice = state.files.some(f => f.practice);
+    if (!(ids.includes(phones.current) || (phones.current === PRACTICE_ID && hasPractice))) phones.current = ids[0] || (hasPractice ? PRACTICE_ID : null);
+    const main = h('div', null);
+    host.append(h('div', { class: 'pane' }, phonesPanel(), main));
+    if (nav.bulk) { renderBulk(main); return; }
+    const id = phones.current;
+    if (!id) { main.append(noPhones()); return; }
+    if (!PHONE_SECTIONS(id).some(([k]) => k === nav.phoneSection)) nav.phoneSection = 'overview';
+    const scope = phoneScope(id);
+    const p = phoneRecord(id);
+    main.append(h('div', { class: 'page-head' },
+        h('h1', null, phoneName(id)),
+        id !== PRACTICE_ID ? h('span', { class: 'badge paper' }, fmtTerm(id)) : null,
+        id !== PRACTICE_ID ? h('span', { class: 'badge paper', title: 'mm_manager learns the model when the phone first calls in' },
+            scope.known ? `${TERM_MODELS[TERM_TYPE_MODEL[phoneType(id)]] || 'unknown'} · ${mtrName(scope.mtr)}` : 'model not reported yet') : null,
+        p && p.pending ? h('span', { class: 'badge pink' }, 'update waiting') : null));
+    const sec = nav.phoneSection;
+    if (sec === 'overview') { main.append(phoneOverview(id, scope)); return; }
+    if (sec === 'records') {
+        if (records.terminal !== id) Object.assign(records, { terminal: id, tables: null, offset: 0 });
+        main.append(h('div', { id: 'view-records' }));
+        renderRecords();
+        return;
+    }
+    renderGroupPage(main, scope, SETTING_GROUPS.find(g => g.key === sec), `p:${sec}`);
+}
+
+function noPhones() {
+    return h('div', { class: 'empty' },
+        h('div', { class: 'bubble teal' },
+            h('p', null, h('strong', null, 'no phones yet.')),
+            server
+                ? h('p', null, 'A payphone shows up here by itself the first time it calls in. To get ready before then, press ', h('em', null, 'add a phone'),
+                    ' and key in its terminal ID: the 10-digit number set on the phone during install.')
+                : h('p', null, 'Open your ', h('code', null, 'tables/'), ' folder: each phone is a folder in it named after its 10-digit terminal ID.')),
+        h('div', { class: 'bubble yellow right' },
+            h('p', null, 'Settings every phone shares (messages, prices, free numbers…) are under ', h('strong', null, 'global'),
+                '. A phone only needs its own when it should be different.')),
+        h('div', { class: 'btns', style: 'margin-bottom:24px' },
+            server ? h('button', { class: 'btn primary', type: 'button', onclick: addPhoneDialog }, 'add a phone')
+                : h('button', { class: 'btn primary', type: 'button', onclick: openFolder }, 'open tables/ folder'),
+            h('button', { class: 'btn', type: 'button', onclick: () => showView('global', 'connection') }, 'set up mm_manager'),
+            h('button', { class: 'btn link', type: 'button', onclick: startTour }, 'take the tour')),
+        h('div', { html: BOOTH_SVG }));
+}
+
+/* A phone's settings, group by group: how many it has of its own, and how many it shares. */
+function settingsSummary(scope, sectionKey) {
+    return h('div', { class: 'summary-grid' }, SETTING_GROUPS.map(g => {
+        const ids = scopeTables(scope, g);
+        const own = ids.filter(id => { const f = resolve(scope, id); return f && f.folder === scope.folder; }).length;
+        const missing = ids.filter(id => !resolve(scope, id)).length;
+        const parts = [own ? `${own} its own` : null, ids.length - own - missing ? `${ids.length - own - missing} shared` : null,
+            missing ? `${missing} missing` : null].filter(Boolean);
+        return h('button', { class: 'table-pick', type: 'button', onclick: () => { sectionKey(g.key); } },
+            g.title, h('span', { class: 'meta' }, parts.join(' · ') || 'none'));
+    }));
+}
+
+function phoneOverview(id, scope) {
+    const box = h('div', { class: 'sections' });
+    if (id === PRACTICE_ID) {
+        box.append(h('div', { class: 'card' }, h('h2', null, 'a phone to practise on'),
+            h('p', null, 'These sample tables live only in this browser tab. Saving them writes nothing, so try anything.'),
+            h('div', { class: 'btns' }, h('button', { class: 'btn', type: 'button', onclick: removePractice }, 'remove the practice phone'))));
+    } else if (server) {
+        const p = phoneRecord(id);
+        if (p) box.append(...phoneCards(p));
+    } else {
+        box.append(tip('Start the control panel (mm_gui) to set how often each phone calls in, see whether its updates went through, and read what it reported.'));
+    }
+    box.append(h('div', { class: 'card' }, h('h3', null, 'settings'),
+        h('p', { class: 'section-note' }, scope.kind === 'practice' ? 'The practice tables, by what they do.'
+            : `Everything this phone gets, by what it does. Most of it is shared with other phones; change something here and only this phone gets the change.${scope.known ? '' : ' Until it reports its model, this assumes a multipay phone.'}`),
+        settingsSummary(scope, key => { nav.phoneSection = key; renderView(); })));
+    return box;
+}
+
+/* ---- one group of settings, for a phone, a model or all phones ---- */
+
+function renderGroupPage(host, scope, g, key) {
+    page.scope = scope;
+    const ids = scopeTables(scope, g);
+    host.append(h('p', { class: 'section-note', style: 'max-width:70ch' }, g.about));
+    const canAdd = state.root || scope.kind === 'practice';
+    const addable = g.ids.filter(id => DEFS[id] && !ids.includes(id));
+    const addRow = () => {
+        if (!canAdd || !addable.length) return null;
+        const sel = selectEl([['', 'add a table…'], ...addable.map(id => [id, `${hexId(id)} · ${DEFS[id].name}`])], '', { 'aria-label': 'Add a table' });
+        sel.classList.add('in');
+        sel.style.maxWidth = '360px';
+        sel.addEventListener('change', async () => {
+            if (!sel.value) return;
+            const f = await createIn(scope, +sel.value);
+            if (f) { nav.table[key] = f.tableId; renderAll(); }
+        });
+        return h('div', { class: 'btns', style: 'margin-bottom:24px' }, sel,
+            h('span', { class: 'meta' }, scope.kind === 'phone' ? 'for this phone only' : scope.kind === 'shared' ? `for ${scope.folder === 'default' ? 'all phones' : modelLabel(scope.folder)}` : ''));
+    };
+    if (!ids.length) {
+        host.append(h('div', { class: 'card' }, h('p', null, state.files.length || scope.kind !== 'phone' || server
+            ? (scope.kind === 'shared' && scope.folder !== 'default' ? `No ${modelLabel(scope.folder)} tables in this group, and none for all phones either.` : 'No tables in this group yet.')
+            : 'Open your tables/ folder to see these settings.')), addRow());
+        return;
+    }
+    let id = nav.table[key];
+    if (!ids.includes(id)) id = ids[0];
+    nav.table[key] = id;
+    host.append(h('div', { class: 'table-picks', role: 'list', 'data-tour': 'table-picks' }, ids.map(t => {
+        const d = DEFS[t];
+        return h('div', { role: 'listitem', style: 'display:contents' }, h('button', { class: 'table-pick', type: 'button', 'aria-current': t === id ? 'true' : 'false',
+            'data-table': hexId(t), onclick: () => { nav.table[key] = t; renderView(); } },
+            d ? d.name : `table ${hexId(t)}`, h('span', { class: 'meta' }, `${hexId(t)}${d ? ' · ' + d.code : ''}`), srcBadge(scope, t)));
+    })), addRow());
+    const f = editableFor(scope, id);
+    if (!f) {
+        const fw = firmwareRow(scope.mtr);
+        host.append(h('div', { class: 'card' }, h('h2', null, DEFS[id] ? DEFS[id].name : `table ${hexId(id)}`),
+            h('p', null, `${fw ? fw[0] : 'This firmware'} takes this table, but there's no file for it in ${scope.chain.map(c => c + '/').join(', ')}, so mm_manager can't send it.`),
+            canAdd ? h('div', { class: 'btns' },
+                h('button', { class: 'btn primary', type: 'button', onclick: async () => { const nf = await createIn(sharedScope('default'), id); if (nf) renderAll(); } }, 'make one for all phones'),
+                h('button', { class: 'btn', type: 'button', onclick: async () => { const nf = await createIn(scope, id); if (nf) renderAll(); } }, 'make one for this phone only')) : null));
+        return;
+    }
+    state.current = f;
+    state.edCtx = { scope };
+    host.append($('#editor'));
     renderEditor();
 }
 
-/* Each tab holds one or more pages; a tab with several shows them as a second row of tabs. A tab opens on its first page. */
-const GROUPS = [
-    ['tables', [['tables', 'edit tables'], ...(server ? [['generate', 'make from public data']] : [])]],
-    ...(server ? [['phones', [['phones', 'payphones'], ['records', 'records']]]] : []),
-    ['manager', [['manager', 'settings'], ['roms', 'rom versions']]],
-    ...(server ? [['files', [['files', 'working folder']]]] : []),
-    ['help', [['help', 'help']]],
-];
-const VIEWS = GROUPS.flatMap(([, pages]) => pages.map(([v]) => v));
+/* The note under an editor's title: whose table this is, and the way back to the shared one. */
+function scopeNote(f) {
+    const note = scopeNoteBody(f);
+    if (note) note.id = 'scope-note';
+    return note;
+}
+function scopeNoteBody(f) {
+    const ctx = state.edCtx;
+    if (!ctx || !ctx.scope || ctx.scope.kind === 'practice') return null;
+    const scope = ctx.scope;
+    const name = id => h('a', { href: '#', onclick: e => { e.preventDefault(); openPhone(id, groupOf(f.tableId).key, f.tableId); } }, phoneName(id));
+    const list = ids => ids.slice(0, 12).flatMap((id, i) => [i ? ', ' : '', name(id)]).concat(ids.length > 12 ? [` and ${ids.length - 12} more`] : []);
+    if (f.folder !== scope.folder || f.exists === false) {
+        const base = f.base || f;
+        const shared = base.folder === 'default' ? 'all phones' : modelLabel(base.folder);
+        return h('div', { class: 'notice' }, h('p', null, isDirty(f)
+            ? `Changed for ${scope.kind === 'phone' ? 'this phone' : modelLabel(scope.folder)} only. Save to keep it; the others keep the version for ${shared}.`
+            : `Shared with ${shared}. Change anything here and ${scope.kind === 'phone' ? 'this phone' : modelLabel(scope.folder)} gets its own copy; the others keep theirs.`),
+            h('div', { class: 'btns' }, h('button', { class: 'btn small link', type: 'button', onclick: () => openShared(f.tableId, base.folder) }, `edit it for ${shared} instead`)));
+    }
+    if (scope.kind === 'phone') {
+        return h('div', { class: 'notice' }, h('p', null, 'This phone\'s own version: other phones don\'t get these changes.'),
+            h('div', { class: 'btns' }, h('button', { class: 'btn small', type: 'button', onclick: () => dropOwn(f) }, 'go back to the shared version')));
+    }
+    const { uses, own } = usersOf(f);
+    return h('div', { class: 'notice' },
+        h('p', null, uses.length ? ['Sent to ', ...list(uses), '.'] : 'No phone in the list gets this file right now.',
+            own.length ? [' ', ...list(own), own.length === 1 ? ' has its own version instead.' : ' have their own versions instead.'] : ''),
+        scope.folder !== 'default' ? h('div', { class: 'btns' }, h('button', { class: 'btn small', type: 'button', onclick: () => dropOwn(f) }, 'go back to the all-phones version')) : null);
+}
 
-function showView(view) {
-    if (view === 'tools') view = 'files';   /* the old tools tab, as remembered from an earlier visit */
-    if (!VIEWS.includes(view)) view = 'tables';
-    state.view = view;
-    const [group, pages] = GROUPS.find(([, ps]) => ps.some(([v]) => v === view));
-    document.querySelectorAll('.tabs .tab').forEach(t => t.setAttribute('aria-selected', t.dataset.view === group ? 'true' : 'false'));
-    const sub = $('#subnav');
-    sub.hidden = pages.length < 2;
-    sub.replaceChildren(...(pages.length < 2 ? [] : pages.map(([v, label]) => h('button', { class: 'tab', type: 'button', role: 'tab', 'data-view': v,
-        'aria-controls': 'view-' + v, 'aria-selected': v === view ? 'true' : 'false', onclick: () => showView(v) }, label))));
-    for (const v of VIEWS) $('#view-' + v).hidden = v !== view;
-    if (view === 'manager') renderManager();
-    if (view === 'roms') { if (server && !roms.rows.length && !roms.tried) { roms.tried = true; openRoms().then(renderRoms); } else renderRoms(); }
-    if (view === 'phones') { phones.list = null; renderPhones(); }
-    if (view === 'records') { records.tables = null; renderRecords(); }
-    if (view === 'files') { tools.files = null; renderFiles(); }
-    if (view === 'generate') renderGenerate();
-    if (view === 'help') renderHelp();
-    safeStorage(s => s.setItem('mmTableEditor.view', view));
+/* ---- several phones at once ---- */
+
+const bulk = { tpl: null, tplKey: '', base: null };
+
+function renderBulk(main) {
+    const ids = [...nav.checked];
+    main.append(h('div', { class: 'page-head' }, h('h1', null, `${ids.length} phones together`),
+        ...ids.slice(0, 8).map(id => h('span', { class: 'badge paper' }, phoneName(id))), ids.length > 8 ? h('span', { class: 'meta' }, `+${ids.length - 8} more`) : null));
+    if (nav.bulkSection === 'callin') { main.append(bulkCallin(ids)); return; }
+    const g = SETTING_GROUPS.find(x => x.key === nav.bulkSection) || SETTING_GROUPS[0];
+    main.append(h('p', { class: 'section-note', style: 'max-width:70ch' }, g.about));
+    const tables = [...new Set(ids.flatMap(id => scopeTables(phoneScope(id), g)))].filter(t => ids.some(id => resolve(phoneScope(id), t)));
+    if (!tables.length) { main.append(h('div', { class: 'card' }, h('p', null, 'None of these phones has a table in this group.'))); return; }
+    const key = 'b:' + g.key;
+    let t = nav.table[key];
+    if (!tables.includes(t)) t = tables[0];
+    nav.table[key] = t;
+    main.append(h('div', { class: 'table-picks' }, tables.map(x => h('button', { class: 'table-pick', type: 'button', 'aria-current': x === t ? 'true' : 'false',
+        onclick: () => { nav.table[key] = x; renderView(); } },
+        DEFS[x] ? DEFS[x].name : `table ${hexId(x)}`, h('span', { class: 'meta' }, `${hexId(x)} · ${ids.filter(id => resolve(phoneScope(id), x)).length} of ${ids.length} phones`)))));
+
+    const have = ids.filter(id => resolve(phoneScope(id), t));
+    if (!have.includes(bulk.base)) bulk.base = have[0];
+    const tplKey = `${t}|${bulk.base}|${ids.join(',')}`;
+    if (!bulk.tpl || bulk.tplKey !== tplKey) {
+        const src = resolve(phoneScope(bulk.base), t);
+        bulk.tpl = makeFile({ path: `together/${tableFileName(t)}`, data: src.bytes.slice() });
+        Object.assign(bulk.tpl, { orig: src.bytes.slice(), exists: false, template: true });
+        bulk.tplKey = tplKey;
+    }
+    const tpl = bulk.tpl;
+    const changes = h('div');
+    const applyBtn = h('button', { class: 'btn primary', type: 'button', onclick: () => applyBulk(ids, tpl) }, `apply to ${ids.length} phones`);
+    const drawChanges = () => {
+        const fields = changedFields(tpl);
+        applyBtn.disabled = !fields.length;
+        changes.replaceChildren(fields.length
+            ? h('div', null, h('strong', null, 'will change: '), h('ul', { class: 'changes' }, fields.slice(0, 12).map(x => h('li', null, x)),
+                fields.length > 12 ? h('li', null, `and ${fields.length - 12} more`) : null))
+            : h('p', { class: 'meta', style: 'margin:0' }, 'Nothing changed yet. Edit the fields below; only the ones you change are copied to each phone.'));
+    };
+    const baseSel = selectEl(have.map(id => [id, phoneName(id)]), bulk.base, { id: uid() });
+    baseSel.classList.add('in');
+    baseSel.addEventListener('change', () => { bulk.base = baseSel.value; renderView(); });
+    main.append(h('div', { class: 'card raised', style: 'margin-bottom:24px' },
+        h('h2', null, 'change fields on every ticked phone'),
+        h('p', { class: 'section-note' }, 'Each phone keeps its other settings. A phone that shares this table gets its own copy with your changes.'),
+        h('div', { class: 'fields' }, h('div', { class: 'field' }, h('label', { class: 'flabel', for: baseSel.id }, 'Show values from'), baseSel)),
+        h('div', { style: 'margin:16px 0' }, changes),
+        h('div', { class: 'btns' }, applyBtn),
+        have.length < ids.length ? h('p', { class: 'meta', style: 'margin-top:8px' }, `${ids.length - have.length} of the ticked phones don't get this table, so they are left out.`) : null));
+    page.onEdit = drawChanges;
+    drawChanges();
+    state.current = tpl;
+    state.edCtx = { bulk: true };
+    main.append($('#editor'));
+    renderEditor();
+}
+
+/* The fields that differ from where a file started, named the way the byte editor names them. */
+function changedFields(f) {
+    const labels = byteLabels(f);
+    const out = [];
+    for (let i = 0; i < f.bytes.length; i++) {
+        if (f.bytes[i] === f.orig[i]) continue;
+        const l = labels[i] || `byte ${i}`;
+        if (out[out.length - 1] !== l) out.push(l);
+    }
+    return [...new Set(out)];
+}
+
+async function applyBulk(ids, tpl) {
+    const idx = [];
+    for (let i = 0; i < tpl.bytes.length; i++) if (tpl.bytes[i] !== tpl.orig[i]) idx.push(i);
+    if (!idx.length) return;
+    let done = 0, same = 0;
+    const skipped = [], failed = [];
+    for (const id of ids) {
+        const scope = phoneScope(id);
+        const src = resolve(scope, tpl.tableId);
+        if (!src) continue;
+        if (src.bytes.length !== tpl.bytes.length) { skipped.push(id); continue; }
+        if (idx.every(i => src.bytes[i] === tpl.bytes[i])) { same++; continue; }
+        const f = editableFor(scope, tpl.tableId);
+        for (const i of idx) f.bytes[i] = tpl.bytes[i];
+        adoptDrafts();
+        if (state.root && !f.dir) { try { f.dir = await rootSubdir(f.folder); } catch (e) { /* saveFile reports it */ } }
+        if (await saveFile(f, { quiet: true })) done++; else failed.push(id);
+    }
+    tpl.orig = tpl.bytes.slice();
+    const parts = [`changed ${done} phone${done === 1 ? '' : 's'}`, same ? `${same} already had it` : null,
+        skipped.length ? `skipped ${skipped.map(phoneName).join(', ')} (different table size)` : null,
+        failed.length ? `couldn't save ${failed.map(phoneName).join(', ')}` : null].filter(Boolean);
+    toast(parts.join('; '), failed.length ? 'error' : 'ok');
+    renderView();
+}
+
+function bulkCallin(ids) {
+    const box = h('div', { class: 'sections' });
+    if (!server) {
+        box.append(h('div', { class: 'card' }, h('p', null, 'Call-in schedules and updates are kept by the control panel. Start mm_gui to change them for several phones at once.')));
+        return box;
+    }
+    const KEEP = '__keep';
+    const callin = selectEl([[KEEP, 'leave as it is'], ...CALLIN_CHOICES], KEEP, { id: uid() });
+    const num = placeholder => h('input', { class: 'in', id: uid(), inputmode: 'numeric', placeholder });
+    const retry = num('leave as it is'), cdr = num('leave as it is');
+    const pending = selectEl([[KEEP, 'leave as it is'], ['on', 'send every table at the next call'], ['off', 'cancel any waiting update']], KEEP, { id: uid() });
+    const config = selectEl([[KEEP, 'no'], ...(phones.configs || []).map(c => [c.name, c.name])], KEEP, { id: uid() });
+    const apply = async () => {
+        for (const [inp, label, min, max] of [[retry, 'Retry a failed call-in after', 1, 59], [cdr, 'Call in after this many calls', 1, 50]]) {
+            const v = inp.value.trim();
+            if (v && (!/^\d+$/.test(v) || +v < min || +v > max)) { toast(`${label}: ${min} to ${max}`, 'error'); return; }
+        }
+        const conf = (phones.configs || []).find(c => c.name === config.value);
+        if (conf && !confirm(`Apply "${conf.name}" to ${ids.length} phones? Its tables replace theirs.`)) return;
+        let n = 0;
+        try {
+            for (const id of ids) {
+                const p = phoneRecord(id);
+                if (!p) continue;
+                if (conf) await applyConfig(conf, p, false);
+                const cfg = { ...p.cfg, ...(conf ? { configuration: conf.name } : {}) };
+                if (callin.value !== KEEP) cfg.callin_interval = callin.value;
+                if (retry.value.trim()) cfg.callin_retry = retry.value.trim();
+                if (cdr.value.trim()) cfg.cdr_threshold = cdr.value.trim();
+                await writePhoneCfg(p.dir, cfg);
+                if (pending.value === 'on') await serverWrite(`${p.dir}/update_pending`, 'Send every table to this terminal the next time it calls in.\n');
+                if (pending.value === 'off' && p.pending) await api(`/api/delete?path=${enc(`${p.dir}/update_pending`)}`, { method: 'POST' });
+                n++;
+            }
+        } catch (e) { toast(`hmm, stopped after ${n} phones: ${e.message}`, 'error'); refreshAfterPhoneChange(); return; }
+        toast(`saved for ${n} phones — each gets its new schedule with its next tables`);
+        refreshAfterPhoneChange();
+    };
+    const field = (el, label, hint) => h('div', { class: 'field' }, h('label', { class: 'flabel', for: el.id }, label), el, hint ? h('div', { class: 'fhint' }, hint) : null);
+    box.append(h('div', { class: 'card' }, h('h3', null, 'Calling in'),
+        h('p', { class: 'section-note' }, 'Only what you set here changes; anything left alone stays as each phone has it.'),
+        h('div', { class: 'fields' },
+            field(callin, 'Call in'),
+            field(retry, 'Retry a failed call-in after (minutes)', '1–59'),
+            field(cdr, 'Call in after this many calls', '1–50'))),
+        h('div', { class: 'card' }, h('h3', null, 'Updates'),
+            h('div', { class: 'fields' },
+                field(pending, 'Next call'),
+                field(config, 'Apply a saved configuration', 'Copies its tables into each phone\'s folder, replacing tables with the same name.'))),
+        h('div', { class: 'btns', style: 'margin-top:24px' }, h('button', { class: 'btn primary', type: 'button', onclick: apply }, `save for ${ids.length} phones`)));
+    return box;
+}
+
+/* ---- global ---- */
+
+function renderGlobalView(host) {
+    const sections = GLOBAL_SECTIONS();
+    if (!sections.some(([, items]) => items.some(([k]) => k === nav.global))) nav.global = 'shared:display';
+    const tree = h('ul', { class: 'tree' }, sections.map(([head, items]) => h('li', null,
+        h('div', { class: 'overline tree-head' }, head),
+        h('ul', { class: 'tree', style: 'margin:0;padding:0;border:0' }, items.map(([k, label]) => h('li', null,
+            treeBtn(label, k === nav.global, () => { nav.global = k; renderView(); }, { 'data-global': k })))))));
+    const main = h('div', null);
+    host.append(h('div', { class: 'pane' }, h('div', { class: 'pane-nav' }, h('div', { class: 'card', 'data-tour': 'global-tree' }, tree)), main));
+    const sec = nav.global;
+    const label = sections.flatMap(([, items]) => items).find(([k]) => k === sec)[1];
+    if (sec.startsWith('shared:')) {
+        const g = SETTING_GROUPS.find(x => x.key === sec.slice(7));
+        if (![...MODEL_FOLDERS.map(([f]) => f), 'default'].includes(nav.sharedFolder)) nav.sharedFolder = 'default';
+        main.append(h('div', { class: 'page-head' }, h('h1', null, g.title)),
+            h('div', { class: 'scope-row', role: 'group', 'aria-label': 'Which phones' },
+                [['default', 'all phones'], ...MODEL_FOLDERS].map(([f, l]) => h('button', { class: 'tab', type: 'button', 'aria-pressed': f === nav.sharedFolder ? 'true' : 'false', onclick: () => { nav.sharedFolder = f; renderView(); } }, l))),
+            nav.sharedFolder !== 'default' ? tip(`Tables here go to ${modelLabel(nav.sharedFolder)} instead of the all-phones version. A phone's own version still wins.`)
+                : tip('Every phone gets these unless its model or the phone itself has its own version.'));
+        renderGroupPage(main, sharedScope(nav.sharedFolder), g, `s:${g.key}`);
+        return;
+    }
+    main.append(h('div', { class: 'page-head' }, h('h1', null, label)));
+    if (MGR_SECTIONS.includes(sec)) { mgrSection(main, sec); return; }
+    if (sec === 'roms') {
+        main.append(h('div', { id: 'view-roms' }));
+        if (server && !roms.rows.length && !roms.tried) { roms.tried = true; openRoms().then(renderRoms); } else renderRoms();
+        return;
+    }
+    if (sec === 'configurations') { main.append(configurationsPage()); return; }
+    if (sec === 'generate') { main.append(h('div', { id: 'view-generate' })); renderGenerate(); return; }
+    if (sec === 'files') { tools.files = null; main.append(h('div', { id: 'view-files' })); renderFiles(); return; }
+    if (sec === 'panel') { main.append(h('div', { class: 'two-col' }, panelCard(), h('div'))); return; }
+    if (sec === 'tablefiles') {
+        if (!state.files.includes(state.current)) state.current = state.files.find(f => !f.practice) || state.files[0] || null;
+        main.append(tip('Every table file, folder by folder, as mm_manager sees it. The phone and global pages are easier; this is for opening single files and for tables that fit nowhere else.'),
+            h('div', { class: 'workspace' }, $('#files-side'), $('#editor')));
+        renderSidebar();
+        renderEditor();
+    }
+}
+
+/* Without mm_gui: a phone is a folder in the open tables/ folder, named by its terminal ID. */
+function addLocalPhoneDialog() {
+    const idIn = h('input', { class: 'in', id: uid(), inputmode: 'numeric', maxlength: '10', placeholder: '4085551234' });
+    openDialog('add a phone', h('div', { class: 'fields' },
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: idIn.id }, 'Terminal ID'), idIn,
+            h('div', { class: 'fhint' }, `The 10-digit number keyed into the payphone when it was set up. Makes ${state.rootName}/<terminal ID>/ for its own tables.`))),
+    'add it', async () => {
+        const id = idIn.value.trim();
+        if (!/^\d{10}$/.test(id)) return 'The terminal ID needs exactly 10 digits.';
+        if (phoneIds().includes(id)) return `There is already a phone ${fmtTerm(id)}.`;
+        try { await rootSubdir(id); } catch (e) { return `Couldn't make its folder: ${e.message}`; }
+        state.extraPhones.add(id);
+        openPhone(id, 'overview');
+        return null;
+    });
+}
+
+function configurationsPage() {
+    const box = h('div', { class: 'sections' });
+    if (phones.configs === null) { box.append(h('p', { class: 'meta' }, 'loading…')); loadPhones(); return box; }
+    box.append(tip('A configuration is a phone\'s own tables and call-in settings, saved under a name. Save one from a phone\'s overview, then apply it to other phones here, or to several at once by ticking them on the phones page.'));
+    if (!phones.configs.length) box.append(h('div', { class: 'card' }, h('p', null, 'None yet.')));
+    for (const c of phones.configs) {
+        box.append(h('div', { class: 'card' },
+            h('h3', null, c.name),
+            h('p', { class: 'meta' }, `${c.tables.length} table${c.tables.length === 1 ? '' : 's'}${c.cfg.callin_interval ? ` · calls in every ${c.cfg.callin_interval} minutes` : ''} · ${CONFIGS_DIR}/${c.name}/`),
+            c.tables.length ? h('div', { class: 'chips', style: 'margin:8px 0' }, c.tables.map(t => {
+                const d = DEFS[parseInt(t.slice(9, 11), 16)];
+                return h('span', { class: 'badge paper' }, d ? d.name : t);
+            })) : null,
+            h('div', { class: 'btns', style: 'margin-top:12px' },
+                h('button', { class: 'btn', type: 'button', disabled: !phones.list.length, onclick: () => applyConfigDialog(c, phones.current) }, 'apply to a phone…'),
+                h('button', { class: 'btn link', type: 'button', onclick: () => removeConfig(c) }, 'delete'))));
+    }
+    return box;
+}
+
+/* ---- manager ---- */
+
+function renderManagerView(host) {
+    const sections = MANAGER_SECTIONS();
+    if (!sections.some(([k]) => k === nav.manager)) nav.manager = 'run';
+    const main = h('div', null);
+    host.append(h('div', { class: 'pane' }, h('div', { class: 'pane-nav' }, h('div', { class: 'card' },
+        sectionTree(sections, nav.manager, k => { nav.manager = k; renderView(); }),
+        h('p', { class: 'meta', style: 'margin:12px 4px 0' }, 'Its settings are under ', h('a', { href: '#', onclick: e => { e.preventDefault(); showView('global', 'connection'); } }, 'global'), '.'))), main));
+    if (nav.manager === 'records') {
+        if (records.terminal) Object.assign(records, { terminal: null, tables: null, offset: 0 });
+        main.append(h('div', { class: 'page-head' }, h('h1', null, 'records from all phones')), h('div', { id: 'view-records' }));
+        renderRecords();
+        return;
+    }
+    main.append(h('div', { class: 'page-head' }, h('h1', null, server ? 'run mm_manager' : 'command line')));
+    const { warn } = buildCommand();
+    const fix = warn.length ? h('div', { class: 'notice', style: 'margin:0 0 24px' },
+        h('p', null, h('strong', null, 'Before you start: ')), h('ul', { class: 'warn-list' }, warn.map(w => h('li', null, w))),
+        h('div', { class: 'btns' }, h('button', { class: 'btn small', type: 'button', onclick: () => showView('global', /NCC|Access|Key card/.test(warn.join(' ')) && !/SIP|Replay/.test(warn.join(' ')) ? 'numbers' : 'connection') }, 'fix it in global'))) : null;
+    main.append(...[fix, h('div', { class: 'two-col' },
+        server ? runCard() : commandCard(),
+        server ? commandCard() : h('div', null, tip('Run this from the folder that holds mm_manager and tables/. Or start mm_gui instead: this page then gets a start button and much more.')))].filter(Boolean));
+}
+
+function commandCard() {
+    const out = h('pre', { class: 'cmd', 'aria-live': 'polite' }, buildCommand().line);
+    const shells = h('div', { class: 'radio-row', style: 'margin-bottom:12px', role: 'radiogroup' }, [['posix', 'Linux / macOS'], ['windows', 'Windows cmd']].map(([v, label]) => {
+        const r = h('input', { type: 'radio', name: 'shell', value: v, checked: mgr.shell === v });
+        r.addEventListener('change', () => { if (r.checked) { mgr.shell = v; saveMgr(); out.textContent = buildCommand().line; } });
+        return h('label', { class: 'check' }, r, label);
+    }));
+    return h('div', { class: 'card' + (server ? '' : ' raised'), 'data-tour': 'command' },
+        h('div', { class: 'overline' }, server ? 'the command it runs' : 'your command line'),
+        shells, out,
+        h('div', { class: 'btns' },
+            h('button', { class: 'btn' + (server ? '' : ' primary'), type: 'button', onclick: async () => {
+                try { await navigator.clipboard.writeText(out.textContent); toast('copied! paste it into a terminal'); }
+                catch (e) { toast('couldn\'t reach the clipboard; select the command and copy it by hand', 'error'); }
+            } }, 'copy command'),
+            h('button', { class: 'btn link', type: 'button', onclick: () => showView('global', 'connection') }, 'change settings')));
+}
+
+/* ---- shell ---- */
+
+function renderAll() {
+    renderSidebar();
+    renderView();
 }
 
 function applyTheme(t) {
@@ -4328,7 +5110,18 @@ function applyTheme(t) {
 }
 
 function init() {
-    document.querySelectorAll('.tabs .tab').forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
+    const rail = [...document.querySelectorAll('.rail .rail-btn')];
+    rail.forEach((t, i) => {
+        t.addEventListener('click', () => showView(t.dataset.view));
+        t.addEventListener('keydown', e => {
+            const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+            if (!step) return;
+            e.preventDefault();
+            const next = rail[(i + step + rail.length) % rail.length];
+            next.focus();
+            showView(next.dataset.view);
+        });
+    });
     $('#open-folder-btn').addEventListener('click', openFolder);
     $('#open-files-btn').addEventListener('click', openFiles);
     $('#new-table-btn').addEventListener('click', newTableDialog);
@@ -4340,10 +5133,10 @@ function init() {
         renderAll();
     });
     $('#dir-input').addEventListener('change', async e => {
-        state.files = []; state.root = null;
+        state.files = state.files.filter(f => f.practice); state.root = null;
+        drafts.clear();
         state.rootName = e.target.files[0] ? (e.target.files[0].webkitRelativePath || '').split('/')[0] : '';
         await readPicked([...e.target.files].filter(x => /mm_table_[0-9a-f]{2}\.bin$/i.test(x.name)), true);
-        state.current = state.files[0] || null;
         e.target.value = '';
         renderAll();
     });
@@ -4354,8 +5147,8 @@ function init() {
         if (!e.dataTransfer || !e.dataTransfer.files.length) return;
         await readPicked(e.dataTransfer.files, false);
         state.current = state.files[state.files.length - 1] || state.current;
-        showView('tables');
-        renderAll();
+        renderSidebar();
+        showView('global', 'tablefiles');
     });
     window.addEventListener('beforeunload', e => {
         if (state.files.some(f => !f.practice && isDirty(f)) || (roms.rows.length && romCsv() !== roms.orig)) { e.preventDefault(); e.returnValue = ''; }
@@ -4376,21 +5169,18 @@ function init() {
     applyHints();
 
     if (!fsAccess) $('#open-folder-btn').title = 'This browser opens folders read-only; saving downloads the files.';
-    renderAll();
-    const view = safeStorage(s => s.getItem('mmTableEditor.view'), null);
-    showView(view || 'tables');
+    renderSidebar();
+    showView(VIEWS.includes(nav.view) ? nav.view : 'phones');
     if (!safeStorage(s => s.getItem('mmTableEditor.onboarded'), '1')) showWelcome();
     if (server) initServer();
 }
 
-/* Served by mm_gui: show the extra tabs, open tables/, and keep an eye on mm_manager. */
+/* Served by mm_gui: open tables/, read the phones, and keep an eye on mm_manager. */
 async function initServer() {
     document.title = 'mmumblephone control panel';
-    $('.masthead .tagline').textContent = 'control panel · run the manager and tune what your payphone hears';
-    $('#tab-phones').hidden = false;
-    $('#tab-files').hidden = false;
+    $('.masthead .tagline').textContent = 'control panel · run the manager and tune what your payphones hear';
     $('#run-pill').hidden = false;
-    $('#run-pill').addEventListener('click', () => showView('manager'));
+    $('#run-pill').addEventListener('click', () => showView('manager', 'run'));
     $('#open-folder-btn').textContent = 'reload tables';
     $('#open-folder-btn').title = 'Read the tables in mm_manager\'s tables/ folder again';
     $('#footer-note').textContent = 'The control panel (mm_gui) only answers this computer. Files are only written when you press save.';
@@ -4399,7 +5189,7 @@ async function initServer() {
     if (server.info && !server.info.manager) toast(`mm_manager isn't next to mm_gui in ${server.info.bindir}, so it can't be started from here`, 'error');
     if (!state.files.some(f => !f.practice)) await openServerTables(true);
     pollLoop();
-    if (state.view !== 'tables') showView(state.view);
+    await loadPhones();
 }
 
 init();

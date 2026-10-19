@@ -49,16 +49,12 @@ Download it from the [releases page](https://github.com/jxburros/mm_manager/rele
 
 Start **`mm_gui`** and it opens the table editor in your web browser, with everything mm_manager needs on buttons:
 
-* **tables**
-  * *edit tables*: your `tables/` folder is open already. Saving writes straight back into it, in any browser.
-  * *make from public data*: the Python table generators, which build local calling and area code tables, with a button to install the packages they need.
-* **phones**
-  * *payphones*: every payphone, by its terminal ID. Name it, change its ID when it changes on the phone, set how often it calls in, see whether its last update went through, and save its tables as a configuration to apply to other phones. See [several payphones](#several-payphones-updates-and-call-ins).
-  * *records*: what payphones reported when they called in (calls, alarms, cash box counts, software versions), read from `mm_manager.db`. Save rows as CSV, or download the database.
-* **manager**
-  * *settings*: pick SIP or a serial modem (*find modems* scans the serial ports), fill in the number the payphone dials, and press *start mm_manager*. Its output scrolls by on the page. It keeps running when you close the page; the button at the top shows whether it is running. *Quit the control panel*, at the bottom, stops everything.
-  * *rom versions*: edits `config/control_rom_versions.csv` in place. mm_manager reads it when it starts.
-* **files**: the working folder (download, upload, delete, turn a `.dlog` transcript into a `.pcap`, move generated tables into `tables/`).
+A rail on the left has four places:
+
+* **phones**: every payphone, by its terminal ID. Pick one for its *overview* (name, ID, how often it calls in, whether its last update went through, saved configurations), its settings grouped by what they do (display & messages, features & hours, prices, free/blocked/speed-dial numbers, local & long distance, cards & carriers, coins & cash box, advanced), and its *records*. Each setting is marked *shared* or *this phone only*: change a shared one here and the phone gets its own copy, which *go back to the shared version* removes again. Tick two or more phones and press *edit together* to change the same fields on all of them, or their call-in schedule, while each keeps its other settings. See [several payphones](#several-payphones-updates-and-call-ins).
+* **global**: the same setting groups for every phone, with a switch to give one model (coin, card-only, desk…) its own version, and a list of which phones get each file. Then mm_manager's own options (connection, with a serial modem scan; numbers & codes; calling in & updates; sending tables; logs), the control ROM list (`config/control_rom_versions.csv`), saved configurations, the Python table generators, the working folder (download, upload, delete, turn a `.dlog` transcript into a `.pcap`), every table file folder by folder, and *quit the control panel*.
+* **manager**: start and stop mm_manager and watch its output, and the records from every phone, read from `mm_manager.db`. It keeps running when you close the page; the button at the top shows whether it is running.
+* **help**: the guide.
 
 The welcome screen, tour and help tab cover all of this.
 
