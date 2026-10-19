@@ -37,7 +37,7 @@ The design borrows from software fax over IP (spandsp, iaxmodem, t38modem):
 | `src/mm_osal.c` | Small sockets/threads/time portability layer (Linux, macOS, Windows) |
 | `src/mm_detect.c` | Serial modem detection: enumerates serial ports and probes them with AT commands (`-D`, `-f auto`) |
 | `html/table_editor.html` | Browser-based editor for the configuration tables, the mm_manager command line and the control ROM version list |
-| `tests/` | Modem loopback tests (noise, echo, clock offset, A-law), an end-to-end SIP test and a modem detection test (`ctest`) |
+| `tests/` | Modem loopback tests (noise, echo, clock offset, A-law), an end-to-end SIP test and, on Linux, macOS and the BSDs, a modem detection test that uses pseudo-terminals (`ctest`) |
 
 ## Using the SIP virtual modem
 
@@ -467,34 +467,36 @@ Simply download the source files and example tables from GitHub.
 
 ## Linux and MacOS
 
-From the shell, type:
+You need a C11 compiler and CMake 3.25 or later.  From the shell, type:
 
 
 ```
 cmake .
 make
+ctest
 ```
 
 
-to compile `mm_manager`, and several utilities.
+to compile `mm_manager` and its utilities, and to run the tests (the software modem, the SIP virtual modem end to end and, on Unix, modem detection).  The build uses `-Wall -Wextra -Werror`, so warnings fail the build.  An out-of-source build (`cmake -S . -B build && cmake --build build`) works too.  `make install` installs the programs to `bin`, and the default tables, `config` and Wireshark files with them.
 
 
 ## Windows
 
-Compile `mm_manager` with Microsoft Visual Studio 2019 or later with CMake, using “Open Folder.”
+Compile `mm_manager` with Microsoft Visual Studio with CMake 3.25 or later (Visual Studio 2022 17.5 or later includes it), using “Open Folder.”
 
 
 ### Usage:
 
 
 ```
-usage: mm_manager [-vhmq] [-f <filename>] [-i "modem init string"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>]
+usage: mm_manager [-vhmqD] [-f <filename>] [-i "modem init string"] [-l <logfile>] [-p <pcapfile>] [-a <access_code>] [-k <key_code>] [-n <ncc_number>] [-d <default_table_dir] [-t <term_table_dir>] [-u <port>] [-S <sip_config>]
         -a <access_code> - Craft 7-digit access code (default: CRASERV)
         -b <baudrate> - Modem baud rate, in bps.  Defaults to 19200.
         -c - Always download complete table set.
+        -D - detect: scan the serial ports for modems, list them, and exit.
         -d <default_table_dir> - default table directory.
         -e <error_inject_type> - Inject error on SIGBRK.
-        -f <filename> modem device or file
+        -f <filename> modem device or file.  With -m, -f auto (or leaving out -f) uses the first modem found.
         -h this help.
         -i "modem init string" - Modem initialization string.
         -k <key_code> - Desk Terminal 10-digit key card code (default: 4012888888)
@@ -515,6 +517,21 @@ usage: mm_manager [-vhmq] [-f <filename>] [-i "modem init string"] [-l <logfile>
         -v verbose (multiple v's increase verbosity.
         -w - don't monitor the modem for carrier loss.
 ```
+
+
+
+## Pre-built packages
+
+Every push to `main` builds and tests the code on Linux (x64), macOS (x64) and Windows (x64 and x86), and publishes the packages as a GitHub pre-release.  Creating a release attaches the same packages to that release.
+
+
+## Running from the right folder
+
+`mm_manager` finds its files relative to the current directory, so start it from the folder that contains `tables/` and `config/` (normally your checkout), or point it at your tables with `-d` and `-t`.  The files are:
+
+* `tables/default` and `tables/` - the default and terminal-specific table folders (`-d`, `-t`).
+* `config/control_rom_versions.csv` - maps each terminal's control ROM edition to its terminal type.
+* `mm_manager.db` - a SQLite database that `mm_manager` creates in the current directory.  It keeps what the terminals report: alarms, call detail records, call and performance statistics, cash box status and collections, terminal status and software versions.
 
 
 
@@ -566,6 +583,14 @@ Where:
 
 	install.pcap is a packet capture that can be loaded into [Wireshark](https://github.com/hharte/mm_manager/tree/master/wireshark) for debugging.
 
+With the SIP virtual modem, use `-S` instead of `-m -f`, as described [above](#using-the-sip-virtual-modem):
+
+
+```
+./mm_manager -S 1000:secret@pbx.example.com -n 18005551234 -vv -l install.dlog -p install.pcap
+```
+
+
 Follow the Terminal’s on-screen prompts to install.
 
 Key in this Terminal’s telephone number (10-digits) NPA-NXX-XXXX.
@@ -585,7 +610,7 @@ In the case of large table download (> 245 bytes) to the Millennium terminal, th
 
 The following are some of the tables used by the Millennium terminal.  They should be customized (using a hex editor) for your specific phone.  _(mmumblephone: or with the [table editor](#editing-tables-in-your-browser), `html/table_editor.html`.)_  Some parameters (like NCC numbers and Access Code) can be changed via command-line parameters to `mm_manager`.
 
-***New:*** You can customize the Advertising Messages (ADMESS table 0x1d) using the [web-based editor](https://html-preview.github.io/?url=https://github.com/hharte/mm_manager/blob/main/html/admess_editor.html).  Upload your mm_table_1d.bin file, modify it as needed, and then download the updated version from the webpage.
+You can customize the Advertising Messages (ADMESS table 0x1d) using the [web-based editor](https://html-preview.github.io/?url=https://github.com/hharte/mm_manager/blob/main/html/admess_editor.html) (`html/admess_editor.html`).  Upload your mm_table_1d.bin file, modify it as needed, and then download the updated version from the webpage.  The [table editor](#editing-tables-in-your-browser) does this and more.  Advertising messages can also be generated from a CSV file with `generate_advert_prompts.py` (see below).
 
 Some of the important tables for configuring a Millennium terminal include:
 
@@ -974,7 +999,7 @@ Qty 400: 20-line VFD strings
    </td>
   </tr>
   <tr>
-   <td>92B
+   <td>92
    </td>
    <td>0x5c
    </td>
@@ -1048,7 +1073,7 @@ Qty 400: 20-line VFD strings
   <tr>
    <td>151
    </td>
-   <td>97
+   <td>0x97
    </td>
    <td>Set Based Rating - International Table
    </td>
@@ -1079,7 +1104,7 @@ Qty 400: 20-line VFD strings
 
 ## Generating NPA and LCD tables
 
-Python3 scripts are included to generate NPA and LCD tables automatically, using spreadsheets available from the [North American Numbering Plan Administrator](https://www.nanpa.com/).  For Canada, spreadsheets are available from the [Canadian Numbering Administrator](http://www.cnac.ca/).  These scripts require the Python3 libraries: pandas, requests, and xmltodict to be installed.
+Python3 scripts are included to generate NPA, LCD, international rating and advertising tables automatically, using spreadsheets available from the [North American Numbering Plan Administrator](https://www.nanpa.com/).  For Canada, spreadsheets are available from the [Canadian Numbering Administrator](http://www.cnac.ca/).  The NPA and LCD scripts require the Python3 libraries pandas, requests, and xmltodict (`generate_advert_prompts.py` and `generate_intl_sbr.py` use only the standard library).  `mm_lcd.py` is a helper module used by `generate_lcd.py` and `generate_lcd_lir.py`.
 
 To generate an NPA table that classifies US and Canadian numbers as domestic:
 
@@ -1107,6 +1132,30 @@ To generate LCD tables for Ottawa, Canada, use `generate_lcd_lir.py`:
 ```
 
 
+`generate_lcd.py` generates LCD tables from a list of rate centers that you choose, for the USA or Canada, instead of looking them up.  For example, for the San Jose, California rate center:
+
+
+```
+./generate_lcd.py --state CA --npa 408 --ratecenters "SNJS NORTH" "SNJS WEST" "SNJS SOUTH" CAMPBELL SARATOGA SUNNYVALE "LOS GATOS"
+```
+
+
+`generate_intl_sbr.py` generates the International Set-based Rating table (0x97) from `icc_dial_codes.csv`, which maps each international dialing code to a RATE table entry.  Run it from the repository folder.  It writes `mm_table_97.bin` to the current directory, so copy it into your `tables/` folder:
+
+
+```
+./generate_intl_sbr.py
+```
+
+
+`generate_advert_prompts.py` generates the Advertising Messages table (0x1d) from a CSV file with 20 messages (the first 10 are on-hook, the last 10 are off-hook).  By default it reads `config/advert_prompts.csv`, and writes `mm_table_1d.bin` to the current directory.  With `--terminal`, it writes the table into `tables/<terminal>/` instead, which must already exist:
+
+
+```
+./generate_advert_prompts.py --csv config/advert_prompts.csv --terminal 4085359990
+```
+
+
 
 ## Terminal-Specific Tables
 
@@ -1119,9 +1168,13 @@ To generate LCD tables for Ottawa, Canada, use `generate_lcd_lir.py`:
 
 	`multipay, card_only, desk, coin, inmate`.
 
+	The folder is chosen from the terminal type that the terminal reports.  Folders for `card_only`, `desk` and `coin` are included; add `multipay` or `inmate` yourself if you need them.
+
 
 
 3. `tables/default` - will be used as a last resort if tables cannot be found in the previous directories.
+
+The `tables` and `tables/default` folders can be changed with the `-t` and `-d` options.
 
 `mm_manager` stores the last table update date/time in the terminal-specific directory.  This allows for quicker iteration during testing by using "force download" in the terminal’s craft interface.  This will download only the table that changed and a few tables that are generated within `mm_manager` itself.
 
@@ -1190,7 +1243,7 @@ Two multipay terminals with different Advertising messages, and otherwise config
    </td>
   </tr>
   <tr>
-   <td>mm_carrier.exe
+   <td>mm_carrier
    </td>
    <td>Dump Carrier table MTR 1.20, 2.x
    </td>
@@ -1250,9 +1303,21 @@ Two multipay terminals with different Advertising messages, and otherwise config
    </td>
   </tr>
   <tr>
+   <td>mm_limserv
+   </td>
+   <td>Dump Service Level (Limited Service) table
+   </td>
+  </tr>
+  <tr>
    <td>mm_luhn
    </td>
    <td>Generate / Check magnetic card Luhn check digit
+   </td>
+  </tr>
+  <tr>
+   <td>mm_packtest
+   </td>
+   <td>Check the packing of the table data structures (built, but not installed.)
    </td>
   </tr>
   <tr>
@@ -1363,7 +1428,7 @@ FLAG Bits:
    </td>
    <td>DISCONNECT
    </td>
-   <td>ERROR
+   <td>STATUS (1 = failure)
    </td>
    <td>ACK
    </td>
