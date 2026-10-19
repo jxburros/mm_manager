@@ -36,8 +36,32 @@ The design borrows from software fax over IP (spandsp, iaxmodem, t38modem):
 | `src/mm_vmodem.c` | Virtual modem: AT command emulation, auto-answer, 20 ms media clock, glue between SIP and the soft modem |
 | `src/mm_osal.c` | Small sockets/threads/time portability layer (Linux, macOS, Windows) |
 | `src/mm_detect.c` | Serial modem detection: enumerates serial ports and probes them with AT commands (`-D`, `-f auto`) |
+| `src/mm_gui.c` | Control panel: serves the table editor on `127.0.0.1` and lets it start and stop mm_manager, browse its database and run the tools, so no terminal is needed |
 | `html/table_editor.html` | Browser-based editor for the configuration tables, the mm_manager command line and the control ROM version list |
 | `tests/` | Modem loopback tests (noise, echo, clock offset, A-law), an end-to-end SIP test and, on Linux, macOS and the BSDs, a modem detection test that uses pseudo-terminals (`ctest`) |
+
+## The control panel: no terminal needed
+
+Start **`mm_gui`** (on Windows, double-click `mm_gui.exe` in the `bin` folder). It opens the table editor in your web browser, with everything mm_manager needs on buttons:
+
+* **tables**: your `tables/` folder is open already. Saving writes straight back into it, in any browser.
+* **manager settings**: pick SIP or a serial modem, fill in the number the payphone dials, and press *start mm_manager*. Its output scrolls by on the page. It keeps running when you close the page; the button at the top shows whether it is running.
+* **rom versions**: edits `config/control_rom_versions.csv` in place. mm_manager reads it when it starts.
+* **records**: what payphones reported when they called in (calls, alarms, cash box counts, software versions), read from `mm_manager.db`. Save rows as CSV, or download the database.
+* **tools**: the files in the working folder (download, upload, delete, turn a `.dlog` transcript into a `.pcap`, move generated tables into `tables/`), a scan for serial modems, and the Python table generators, with a button to install the packages they need. *Quit the control panel* stops everything.
+
+The welcome screen, tour and help tab cover all of this.
+
+`mm_gui` finds its files by itself: the working folder (the one with `tables/` and `config/`, where mm_manager runs and keeps `mm_manager.db`) is the current folder, `../share/mm_manager` in a release, or the source checkout. mm_manager and the other tools must be next to `mm_gui`. Options:
+
+| Option | Default | Description |
+|---|---|---|
+| `-p <port>` | 8273 | Local port. If it is busy, the next free one is used. |
+| `-w <folder>` | found automatically | Working folder |
+| `-H <file>` | found automatically | The `table_editor.html` to serve |
+| `-n` | | Don't open a browser |
+
+The control panel only listens on `127.0.0.1`. Each API request must carry a random token that is put in the page when it is served, and must be addressed to `127.0.0.1` or `localhost`, so other web sites can't use it. It only runs mm_manager, the `mm_*` tools next to it and the `generate_*.py` scripts, and only reads and writes files inside the working folder. The SIP password is passed to mm_manager in `MM_SIP_PASSWORD` and isn't saved. On Windows, *stop* ends mm_manager at once, rather than with ^C.
 
 ## Using the SIP virtual modem
 
@@ -112,7 +136,7 @@ These are the same settings that make fax and modem calls work over VoIP:
 
 ## Editing tables in your browser
 
-`html/table_editor.html` replaces hex editing. It is a single page with no build step and no server. Open it in a browser, either from your checkout or [online](https://html-preview.github.io/?url=https://github.com/jxburros/mm_manager/blob/main/html/table_editor.html). Your files stay in the browser and are written only when you press save.
+`html/table_editor.html` replaces hex editing. It is a single page with no build step and no server. Open it in a browser, either from your checkout or [online](https://html-preview.github.io/?url=https://github.com/jxburros/mm_manager/blob/main/html/table_editor.html). Your files stay in the browser and are written only when you press save. Served by `mm_gui` instead (see [the control panel](#the-control-panel-no-terminal-needed)), it reads and writes mm_manager's folder directly, in any browser.
 
 * **Tables.** Open your `tables/` folder to see `default/`, the model folders and any terminal-specific folders together, or open single `mm_table_XX.bin` files. Each table that mm_manager reads from disk has its own form, with labelled fields, flags as checkboxes, phone numbers as digits, prices in dollars and times in seconds:
   * feature configuration, user interface parameters, coin validation and smart card parameters
@@ -121,7 +145,7 @@ These are the same settings that make fax and modem calls work over VoIP:
   * visual prompts, plus the LCD and NPA tables as maps you can paint
   * every table, including undocumented ones such as MODEM (0x21) and DIALRL (0x3e), as editable bytes
 * **New and per-terminal tables.** *New table* creates any table, for example `mm_table_1e.bin`, pre-filled with mm_manager's built-in user interface defaults. *Copy for a terminal* saves a table into `tables/<terminal number>/`.
-* **Manager settings.** This tab builds the `mm_manager` command line: SIP or serial modem, NCC numbers, access code, key card, table folders and logging. It also lists the tables that mm_manager generates on each download, and which option controls each one.
+* **Manager settings.** This tab builds the `mm_manager` command line (served by `mm_gui`, it also starts and stops mm_manager): SIP or serial modem, NCC numbers, access code, key card, table folders and logging. It also lists the tables that mm_manager generates on each download, and which option controls each one.
 * **ROM versions.** This tab edits `config/control_rom_versions.csv`, which maps control ROM editions to terminal types. It checks each row against the limits of mm_manager's CSV reader.
 
 * **Help and tour.** The first visit opens a short welcome. *Take the tour* walks you through the real controls on practice tables, waiting for you to do each step (or doing it for you). The *help* tab has the full guide: where mm_manager looks for tables, which tables each firmware version gets, what every table does, and a glossary. Each table also shows what it does and a few tips; turn these hints off with *hints* at the top.
