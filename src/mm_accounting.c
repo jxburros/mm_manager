@@ -27,6 +27,25 @@
 #define SQL_IGNORE      ""
 #endif /* MYSQL */
 
+/* TSWVERS: one row per terminal and software version it reported. */
+#define TSWVERS_COLUMNS "( " \
+        "ID INTEGER NOT NULL PRIMARY KEY " AUTO_INCREMENT "," \
+        "TERMINAL_ID VARCHAR(10) NOT NULL, " \
+        "EFFECTIVE_DATE VARCHAR(8) NOT NULL," \
+        "EFFECTIVE_TIME VARCHAR(6) NOT NULL," \
+        "CONTROL_ROM_EDITION VARCHAR(7)," \
+        "CONTROL_VERSION_NO VARCHAR(4)," \
+        "TELEPHONY_ROM_EDITION VARCHAR(7)," \
+        "TELEPHONY_VERSION_NO VARCHAR(4)," \
+        "FEATURE_TERMINAL_TYPE SMALLINT UNSIGNED," \
+        "TERMINAL_TYPE SMALLINT UNSIGNED," \
+        "VALIDATOR_SOFTWARE_VERS VARCHAR(2)," \
+        "VALIDATOR_HARDWARE_VERS VARCHAR(2)," \
+        "TELCO_ID VARCHAR(2) DEFAULT 0, REGION_CODE VARCHAR(3) DEFAULT \"USA\", ARCHIVE_IND BOOLEAN DEFAULT 0," \
+        "UNIQUE(TERMINAL_ID,CONTROL_ROM_EDITION,CONTROL_VERSION_NO,TELEPHONY_ROM_EDITION,TELEPHONY_VERSION_NO," \
+               "FEATURE_TERMINAL_TYPE,TERMINAL_TYPE,VALIDATOR_SOFTWARE_VERS,VALIDATOR_HARDWARE_VERS) " \
+        ")"
+
 
 int mm_acct_save_TALARM(void *db, mm_telco_t *telco, char *terminal_id, dlog_mt_alarm_t *alarm) {
     char sql[512] = { 0 };
@@ -1088,28 +1107,35 @@ int mm_acct_create_tables(void *db) {
         return -1;
     }
 
-    rc = mm_sql_exec(db, "CREATE TABLE IF NOT EXISTS TSWVERS ( "
-        "ID INTEGER NOT NULL PRIMARY KEY " AUTO_INCREMENT ","
-        "TERMINAL_ID VARCHAR(10) NOT NULL, "
-        "EFFECTIVE_DATE VARCHAR(8) NOT NULL,"
-        "EFFECTIVE_TIME VARCHAR(6) NOT NULL,"
-        "CONTROL_ROM_EDITION VARCHAR(7),"
-        "CONTROL_VERSION_NO VARCHAR(4),"
-        "TELEPHONY_ROM_EDITION VARCHAR(7),"
-        "TELEPHONY_VERSION_NO VARCHAR(4),"
-        "FEATURE_TERMINAL_TYPE SMALLINT UNSIGNED,"
-        "TERMINAL_TYPE SMALLINT UNSIGNED,"
-        "VALIDATOR_SOFTWARE_VERS VARCHAR(2),"
-        "VALIDATOR_HARDWARE_VERS VARCHAR(2),"
-        "TELCO_ID VARCHAR(2) DEFAULT 0, REGION_CODE VARCHAR(3) DEFAULT \"USA\", ARCHIVE_IND BOOLEAN DEFAULT 0,"
-        "UNIQUE(CONTROL_ROM_EDITION,CONTROL_VERSION_NO,TELEPHONY_ROM_EDITION,TELEPHONY_VERSION_NO,"
-               "FEATURE_TERMINAL_TYPE,TERMINAL_TYPE,VALIDATOR_SOFTWARE_VERS,VALIDATOR_HARDWARE_VERS) "
-        ");");
+    rc = mm_sql_exec(db, "CREATE TABLE IF NOT EXISTS TSWVERS " TSWVERS_COLUMNS ";");
 
     if (rc != 0) {
         fprintf(stderr, "%s: Failed to create table TSWVERS.\n", __func__);
         return -1;
     }
+
+#ifndef MYSQL_DB
+    /*
+     * Databases made before TERMINAL_ID was part of TSWVERS's UNIQUE constraint
+     * kept one row per software version, so a second terminal with the same
+     * software was never recorded.  Rebuild the table with the new constraint.
+     */
+    if (mm_sql_read_uint8(db, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='TSWVERS' "
+                              "AND sql NOT LIKE '%UNIQUE(TERMINAL_ID,%'") == 1) {
+        printf("Updating table TSWVERS to keep software versions for each terminal.\n");
+        rc = mm_sql_exec(db, "BEGIN TRANSACTION;"
+            "CREATE TABLE TSWVERS_NEW " TSWVERS_COLUMNS ";"
+            "INSERT INTO TSWVERS_NEW SELECT * FROM TSWVERS;"
+            "DROP TABLE TSWVERS;"
+            "ALTER TABLE TSWVERS_NEW RENAME TO TSWVERS;"
+            "COMMIT;");
+        if (rc != 0) {
+            (void)mm_sql_exec(db, "ROLLBACK;");
+            fprintf(stderr, "%s: Failed to update table TSWVERS.\n", __func__);
+            return -1;
+        }
+    }
+#endif /* MYSQL_DB */
 
     return 0;
 }
