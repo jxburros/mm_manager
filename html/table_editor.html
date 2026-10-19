@@ -136,7 +136,7 @@ p { margin: 0 0 12px; }
 }
 .masthead .tagline { color: var(--muted); font-size: 15px; margin-top: 6px; }
 .masthead .spacer { flex: 1; }
-.masthead #theme-btn { background: var(--bg); }
+.masthead .btn { background: var(--bg); }
 .blob {
     position: absolute;
     right: -40px;
@@ -532,13 +532,105 @@ dialog .fields { grid-template-columns: minmax(0, 1fr); }
 dialog .btns { margin-top: 20px; justify-content: flex-end; }
 
 /* ---- toasts ---- */
-.toasts { position: fixed; left: 16px; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; pointer-events: none; z-index: 10; }
+.toasts { position: fixed; left: 16px; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; pointer-events: none; z-index: 25; }
 .toast { pointer-events: auto; max-width: 440px; margin-bottom: 18px; animation: pop 240ms cubic-bezier(.34, 1.56, .64, 1); transform-origin: 85% 100%; }
 @keyframes pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .wobble { animation: wobble 2.4s ease-in-out infinite; }
 @keyframes wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
 
 footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
+
+
+/* ---- hints ---- */
+.tip { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; padding: 10px 14px; border-radius: 16px; border: 2px dashed var(--soft-line); font-size: 15px; }
+.tip-icon { display: inline-flex; flex: none; margin-top: 1px; }
+.tip-icon svg { width: 22px; height: 22px; fill: var(--riso-teal); }
+.about { max-width: 760px; margin: 24px 0 32px; }
+.about ul { margin: 6px 0 0; padding-left: 20px; }
+.about li { margin-bottom: 2px; }
+body.no-hints .tip, body.no-hints .about { display: none; }
+.side .tip { margin: 0 0 12px; }
+
+/* ---- help ---- */
+.help-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 1000px) { .help-grid { grid-template-columns: minmax(0, 1fr); } }
+.help-nav ul { list-style: none; margin: 0; padding: 0; }
+.help-nav li a { display: flex; align-items: center; min-height: 44px; font-weight: 700; }
+.sections > section.card { margin-top: 24px; }
+.sections > section.card:first-child { margin-top: 0; }
+section.card h2 { margin-bottom: 16px; }
+section.card ul, section.card ol { padding-left: 22px; margin: 0 0 12px; }
+section.card li { margin-bottom: 6px; }
+ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+ol.steps li { position: relative; padding: 6px 0 0 56px; margin-bottom: 16px; min-height: 44px; }
+ol.steps li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute; left: 0; top: 0;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--riso-pink); color: var(--ink);
+    display: grid; place-items: center; font-weight: 800;
+}
+ol.steps.compact li { padding-left: 48px; margin-bottom: 10px; }
+ol.steps.compact li::before { width: 34px; height: 34px; }
+.guide details { border-bottom: 1px solid var(--soft-line); }
+.guide details:last-child { border-bottom: 0; }
+.guide summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 52px; font-weight: 700; }
+.guide summary .badge { min-width: 84px; justify-content: center; }
+.guide details[open] { padding-bottom: 12px; }
+.guide details p { margin: 4px 0 8px; }
+table.fw td { white-space: normal; max-width: none; vertical-align: top; padding-top: 12px; padding-bottom: 12px; }
+table.fw td.idx { white-space: nowrap; }
+.badge.gen { border-style: dashed; }
+.chip-btn { border: 0; cursor: pointer; min-height: 32px; }
+.chip-btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+dl.glossary { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 20px; margin: 0; }
+dl.glossary dt { font-weight: 800; }
+dl.glossary dd { margin: 0; }
+@media (max-width: 600px) { dl.glossary { grid-template-columns: minmax(0, 1fr); } dl.glossary dd { margin-bottom: 8px; } }
+.welcome p { margin-bottom: 14px; }
+
+/* ---- live tutorial ---- */
+.tour-ring {
+    position: fixed;
+    z-index: 20;
+    border-radius: 18px;
+    pointer-events: none;
+    box-shadow: 0 0 0 4px var(--riso-pink), 0 0 0 200vmax rgba(36, 18, 58, 0.42);
+    transition: left 220ms cubic-bezier(.34, 1.56, .64, 1), top 220ms cubic-bezier(.34, 1.56, .64, 1), width 220ms cubic-bezier(.34, 1.56, .64, 1), height 220ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.tour-ring.none { box-shadow: 0 0 0 200vmax rgba(36, 18, 58, 0.42); }
+.tour-card {
+    position: fixed;
+    z-index: 21;
+    width: min(400px, calc(100vw - 32px));
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 20px;
+    padding: 18px 20px 12px;
+    box-shadow: 10px 10px 0 var(--riso-teal);
+    animation: pop 240ms cubic-bezier(.34, 1.56, .64, 1);
+}
+.tour-card h2 { font: 800 21px/1.2 'Nunito', sans-serif; margin: 0 0 8px; outline: none; }
+.tour-card p { margin: 0 0 10px; }
+.tour-card::before {
+    content: "";
+    position: absolute;
+    left: var(--tail-x, 32px);
+    width: 32px;
+    height: 18px;
+    background: var(--surface);
+}
+.tour-card[data-side="below"]::before { top: -17px; clip-path: polygon(0 100%, 100% 100%, 0 0); }
+.tour-card[data-side="above"]::before { bottom: -17px; clip-path: polygon(0 0, 100% 0, 0 100%); }
+.tour-card[data-side="none"]::before { display: none; }
+.tour-status { font-weight: 700; padding: 8px 12px; border-radius: 12px; background: var(--sunny-yellow); color: var(--ink); }
+.tour-status.done { background: var(--deep-teal); color: var(--paper); }
+.tour-card .btns { gap: 8px 12px; margin-top: 4px; }
+@media (max-width: 600px) {
+    .tour-card { left: 16px !important; right: 16px; top: auto !important; bottom: 16px; width: auto; }
+    .tour-card::before { display: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
@@ -572,13 +664,18 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
             <div class="tagline">table editor · tune what your payphone hears from the manager</div>
         </div>
         <div class="spacer"></div>
-        <button class="btn small" id="theme-btn" type="button" aria-label="Colour theme">theme: auto</button>
+        <div class="btns">
+            <button class="btn small" id="tour-btn" type="button">take the tour</button>
+            <button class="btn small" id="hints-btn" type="button" aria-pressed="true">hints: on</button>
+            <button class="btn small" id="theme-btn" type="button" aria-label="Colour theme">theme: auto</button>
+        </div>
     </header>
 
     <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab" role="tab" id="tab-tables" aria-controls="view-tables" aria-selected="true" data-view="tables">tables</button>
         <button class="tab" role="tab" id="tab-manager" aria-controls="view-manager" aria-selected="false" data-view="manager">manager settings</button>
         <button class="tab" role="tab" id="tab-roms" aria-controls="view-roms" aria-selected="false" data-view="roms">rom versions</button>
+        <button class="tab" role="tab" id="tab-help" aria-controls="view-help" aria-selected="false" data-view="help">help</button>
     </nav>
 
     <main>
@@ -607,6 +704,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
 
         <section id="view-manager" role="tabpanel" aria-labelledby="tab-manager" hidden></section>
         <section id="view-roms" role="tabpanel" aria-labelledby="tab-roms" hidden></section>
+        <section id="view-help" role="tabpanel" aria-labelledby="tab-help" hidden></section>
     </main>
 
     <footer>
@@ -617,6 +715,11 @@ footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
 </div>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
+
+<div id="tour" hidden>
+    <div class="tour-ring"></div>
+    <div class="tour-card" role="dialog" aria-modal="false" aria-labelledby="tour-title"></div>
+</div>
 
 <dialog id="dialog"></dialog>
 
@@ -937,7 +1040,7 @@ function fieldEl(f, b, base, ctx) {
     const id = uid();
     const hint = h('div', { class: 'fhint', id: id + '-hint' });
     const isSet = f.kind === 'bits' || f.kind === 'matrix';
-    const wrap = h(isSet ? 'fieldset' : 'div', { class: 'field' + (f.wide || isSet || f.kind === 'union' ? ' wide' : '') });
+    const wrap = h(isSet ? 'fieldset' : 'div', { class: 'field' + (f.wide || isSet || f.kind === 'union' ? ' wide' : ''), 'data-key': f.key || null });
     const say = (msg, bad = false) => {
         wrap.classList.toggle('bad', bad);
         hint.textContent = [msg, bad ? '' : f.note].filter(Boolean).join(' · ');
@@ -1643,7 +1746,7 @@ async function openFolder() {
     let dir;
     try { dir = await window.showDirectoryPicker({ id: 'mm-tables', mode: 'readwrite' }); }
     catch (e) { if (e.name !== 'AbortError') toast(`hmm, couldn't open that folder: ${e.message}`, 'error'); return; }
-    if (state.files.some(isDirty) && !confirm('Opening a folder closes the tables you have open, including unsaved changes. Continue?')) return;
+    if (state.files.some(f => !f.practice && isDirty(f)) && !confirm('Opening a folder closes the tables you have open, including unsaved changes. Continue?')) return;
     state.files = []; state.current = null; state.root = dir; state.rootName = dir.name;
     let count = 0;
     async function scan(d, prefix, depth) {
@@ -1689,6 +1792,13 @@ async function openFiles() {
 }
 
 async function saveFile(f) {
+    if (f.practice) {
+        f.orig = f.bytes.slice();
+        f.practiceSaved = true;
+        toast('saved! (it\'s a practice table, so nothing was written to disk)');
+        updateDirtyUI();
+        return;
+    }
     try {
         if (!f.handle && f.dir) f.handle = await f.dir.getFileHandle(f.name, { create: true });
         if (f.handle && f.handle.createWritable) {
@@ -1729,7 +1839,7 @@ function renderSidebar() {
     $('#folder-info').textContent = state.root ? `folder: ${state.rootName}/ (saves write straight back)` :
         state.files.length ? (fsAccess ? 'opened as files' : 'this browser can\'t write files, so save downloads them') : '';
     if (!state.files.length) {
-        list.append(h('li', { class: 'meta' }, 'nothing open yet.'));
+        list.append(h('li', null, tip('Open the ', h('code', null, 'tables/'), ' folder itself, so default/, the model folders and any terminal folders open together.')));
     }
     const groups = new Map();
     for (const f of state.files) {
@@ -1740,14 +1850,17 @@ function renderSidebar() {
         const ul = h('ul', { class: 'file-list', style: 'max-height:none;overflow:visible' });
         for (const f of files) {
             const btn = h('button', { class: 'file-item', type: 'button', 'aria-current': f === state.current ? 'true' : 'false',
-                onclick: () => { state.current = f; renderSidebar(); renderEditor(); } },
+                'data-path': f.path, onclick: () => selectFile(f) },
                 h('span', { class: 'code' + (f.def ? '' : ' unknown') }, f.def ? f.def.code : '?'),
                 h('span', { class: 'nm' }, f.name),
                 h('span', { class: 'dirty', 'data-key': f.key }),
                 h('span', { class: 'desc' }, f.def ? f.def.name : (f.tableId != null ? `table ${hexId(f.tableId)}` : 'unknown table')));
             ul.append(h('li', null, btn));
         }
-        list.append(h('li', { class: 'file-group' }, h('div', { class: 'overline' }, folder ? folder + '/' : (state.rootName ? state.rootName + '/' : 'opened files')), ul));
+        const label = h('div', { class: 'overline' }, folder ? folder + '/' : (state.rootName ? state.rootName + '/' : 'opened files'));
+        const remove = folder === 'practice' && files.every(f => f.practice)
+            ? h('button', { class: 'btn link small', type: 'button', onclick: removePractice, style: 'min-height:32px;padding:0' }, 'remove practice tables') : null;
+        list.append(h('li', { class: 'file-group' }, label, remove, ul));
     }
     updateDirtyUI();
 }
@@ -1781,6 +1894,10 @@ function emptyState() {
                 ' inside) to edit every table at once, or open a few ', h('code', null, 'mm_table_XX.bin'), ' files. You can also drop files anywhere on this page.')),
         h('div', { class: 'bubble yellow right' },
             h('p', null, 'Nothing is sent anywhere. Edits stay in this tab until you save, and mm_manager picks the new tables up on the terminal\'s next download.')),
+        h('div', { class: 'btns', style: 'margin-bottom:24px' },
+            h('button', { class: 'btn primary wobble', type: 'button', onclick: startTour }, 'take the tour'),
+            h('button', { class: 'btn', type: 'button', onclick: loadPractice }, 'practise on sample tables'),
+            h('button', { class: 'btn link', type: 'button', onclick: () => showView('help') }, 'read the guide')),
         h('div', { html: BOOTH_SVG }));
 }
 
@@ -1806,8 +1923,8 @@ function renderEditor() {
     if (!f.view || (f.view !== 'bytes' && !structured)) f.view = structured ? 'fields' : 'bytes';
 
     const actions = h('div', { class: 'btns' },
-        h('button', { class: 'btn primary', type: 'button', onclick: () => saveFile(f) },
-            f.handle || f.dir ? 'save' : 'save (download)'),
+        h('button', { class: 'btn primary', type: 'button', 'data-tour': 'save', onclick: () => saveFile(f) },
+            f.practice ? 'save (practice)' : f.handle || f.dir ? 'save' : 'save (download)'),
         h('button', { class: 'btn', type: 'button', onclick: () => { download(f.name, f.bytes); toast(`downloaded ${f.name}`, 'info'); } }, 'download'),
         h('button', { class: 'btn', type: 'button', onclick: () => copyForTerminal(f) }, 'copy for a terminal'),
         h('button', { class: 'btn link', type: 'button', onclick: () => {
@@ -1849,14 +1966,17 @@ function renderEditor() {
             } }, `pad / trim to ${sizes[0]} bytes`))));
     }
     host.append(head);
+    const about = d && aboutTable(d);
+    if (about) host.append(about);
 
     const tabs = h('div', { class: 'subtabs', role: 'tablist', 'aria-label': 'Editor view' });
     const views = structured ? [['fields', d.kind === 'grid' ? 'map' : d.kind === 'list' ? 'entries' : d.kind === 'prompts' ? 'prompts' : 'fields'], ['bytes', 'bytes']] : [['bytes', 'bytes']];
     for (const [v, label] of views) {
-        tabs.append(h('button', { class: 'tab', type: 'button', role: 'tab', 'aria-selected': f.view === v ? 'true' : 'false',
+        tabs.append(h('button', { class: 'tab', type: 'button', role: 'tab', 'data-view': v, 'aria-selected': f.view === v ? 'true' : 'false',
             onclick: () => { f.view = v; renderEditor(); } }, label));
     }
     host.append(tabs);
+    host.append(tip(VIEW_TIPS[f.view === 'bytes' ? 'bytes' : d.kind]));
 
     const ctx = {
         changed: () => updateDirtyUI(),
@@ -1928,7 +2048,7 @@ function renderList(f, ctx) {
         h('div', { class: 'list-tools' }, filter,
             h('label', { class: 'check' }, hideBox, 'hide empty entries'),
             firstEmpty != null && h('button', { class: 'btn small', type: 'button', onclick: () => { f.sel = firstEmpty; renderEditor(); } }, 'add entry')),
-        h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
+        h('div', { class: 'table-wrap', 'data-tour': 'entries' }, h('table', { class: 'grid' },
             h('thead', null, h('tr', null, h('th', null, '#'), d.cols.map(([l]) => h('th', null, l)))), tbody)));
     out.append(listCard);
     applyFilter();
@@ -1955,7 +2075,7 @@ function renderList(f, ctx) {
             } }, 'clear'))));
 
     if (d.admess) {
-        const vfd = h('div', { class: 'vfd', 'aria-label': 'Display preview' });
+        const vfd = h('div', { class: 'vfd', 'aria-label': 'Display preview', 'data-tour': 'preview' });
         updateVfd = () => {
             const msg = vfdSafe(readText(b, base + d.entry.map.message_text.o, 20)).padEnd(20, ' ').slice(0, 20);
             const fx = b[base + d.entry.map.display_attr.o] & ~ADMESS_BLANK_BEFORE;
@@ -2099,7 +2219,7 @@ function renderGrid(f, ctx) {
             return h('span', { class: 'badge paper' }, `${sym} ${name}: ${c}`);
         }));
     };
-    const paletteEl = h('div', { class: 'palette', role: 'group', 'aria-label': 'Paint with' });
+    const paletteEl = h('div', { class: 'palette', role: 'group', 'aria-label': 'Paint with', 'data-tour': 'palette' });
     const drawPalette = () => {
         paletteEl.replaceChildren(...g.values.map(([v, sym, name, cls]) => h('button', {
             class: 'swatch', type: 'button', 'aria-pressed': f.brush === v ? 'true' : 'false',
@@ -2227,7 +2347,7 @@ function renderHex(f) {
     f.hexPage = Math.min(f.hexPage, pages - 1);
     const labels = byteLabels(f);
     const status = h('div', { class: 'hex-status meta', 'aria-live': 'polite' }, 'hover or focus a byte to see which field it belongs to.');
-    const host = h('div', { class: 'hex' });
+    const host = h('div', { class: 'hex', 'data-tour': 'hex' });
     const pager = h('div', { class: 'pager' });
     const draw = () => {
         const start = f.hexPage * per;
@@ -2481,7 +2601,7 @@ function renderManager() {
             inputmode: x.inputmode || null, autocomplete: x.autocomplete || 'off', spellcheck: 'false' });
         inp.value = mgr[key] ?? '';
         inp.addEventListener('input', () => { mgr[key] = inp.value.trim(); refresh(); });
-        return h('div', { class: 'field' + (x.wide ? ' wide' : '') }, h('label', { class: 'flabel', for: id }, label), inp,
+        return h('div', { class: 'field' + (x.wide ? ' wide' : ''), 'data-mgr': key }, h('label', { class: 'flabel', for: id }, label), inp,
             x.hint ? h('div', { class: 'fhint' }, x.hint) : null);
     };
     const check = (key, label) => {
@@ -2556,7 +2676,7 @@ function renderManager() {
     } }, 'copy command');
 
     const side = h('div', { class: 'side' },
-        h('div', { class: 'card raised' },
+        h('div', { class: 'card raised', 'data-tour': 'command' },
             h('div', { class: 'overline' }, 'your command line'),
             h('div', { class: 'radio-row', style: 'margin-bottom:12px' }, radios('shell', [['posix', 'Linux / macOS'], ['windows', 'Windows cmd']])),
             out, warnList,
@@ -2570,6 +2690,7 @@ function renderManager() {
                 h('div', { class: 'meta' }, how)))),
             h('p', { class: 'meta', style: 'margin-top:12px' }, 'User interface parameters (0x1e) are built too, but only when there is no mm_table_1e.bin — make one under tables → new table.')));
 
+    form.prepend(tip('Fill in the left side and the command on the right follows along. Blank fields use mm_manager\'s defaults, shown in grey.'));
     host.append(h('div', { class: 'two-col' }, form, side));
     refresh();
 }
@@ -2648,6 +2769,7 @@ function renderRoms() {
                 roms.rows.length ? h('button', { class: 'btn', type: 'button', onclick: openRoms }, 'open another') : null,
                 roms.rows.length && romCsv() !== roms.orig ? h('span', { class: 'badge tilt' }, 'edited') : null)));
     host.append(intro);
+    host.append(h('div', { style: 'margin-top:24px' }, tip('When a payphone reports a ROM edition that isn\'t listed, mm_manager can\'t tell its type and falls back to MTR 1.7 tables. Add the edition here with the terminal type of a similar ROM, then restart mm_manager.')));
     if (!roms.rows.length) {
         host.append(h('div', { class: 'empty' }, h('div', { class: 'bubble pink' },
             h('p', null, h('strong', null, 'nothing loaded yet.')),
@@ -2712,6 +2834,484 @@ function renderRoms() {
 }
 
 /* =====================================================================
+ * Hints: an "about this table" bubble and a tip for each view
+ * ===================================================================== */
+
+const TABLE_HELP = {
+    FEATRU: { title: 'Feature configuration', what: 'Switches terminal features on and off: card validation, advertising, the clock, coin call overtime, the datajack and rating options.',
+        tips: ['To show your advertising messages, tick "advertising enabled" under Advertising.',
+            'For a 12-hour clock, tick both "date / time display" and "12-hour clock".',
+            'The call screening pointers are entry numbers in the call screening list, so change them together with that list.'] },
+    USERPRM: { title: 'User interface parameters', what: 'Timers for the user interface: how long prompts stay up, timeouts while dialing, coin warnings and bong tones.',
+        tips: ['Most values are in 10 ms steps, so 450 means 4.5 seconds. The note under each field shows the time in seconds.',
+            'The coin warnings are in seconds: how long before a paid coin call runs out the caller is warned.',
+            'Delete this file and mm_manager goes back to its built-in values.'] },
+    ADMESS: { title: 'Advertising messages', what: 'The messages the display cycles through while the phone is idle (and during calls, if that is switched on). 20 messages of 20 characters.',
+        tips: ['Advertising must be switched on in the feature configuration table (0x1a) for these to appear.',
+            'Display time is in 10 ms steps: 200 is 2 seconds.',
+            '"blank before" clears the display before the message appears.'] },
+    PROMPTS: { title: 'Visual prompts', what: 'The text of the terminal\'s own display prompts, one 20-character line each, in the order the firmware uses them.',
+        tips: ['Use "find text" to find a prompt, then edit it in place.',
+            'Language A is usually English and language B the second language.'] },
+    CARD: { title: 'Card table', what: 'Which card numbers the phone accepts, by range of their first digits (the PAN), and how it checks them.',
+        tips: ['PAN ranges are 6 hex digits, e.g. 400000 – 499999 for cards that start with 4.',
+            'The card standard decides which service-code fields apply, so the form changes when you change it.',
+            'Carrier reference links the card range to an entry in the carrier table.'] },
+    CARRIER: { title: 'Carrier table', what: 'The long-distance carriers the phone can route calls to, the prompt shown for each, and how each is dialed.',
+        tips: ['The header picks the default carrier (by reference number) for each kind of call.',
+            'CIC is the 4-digit carrier identification code, e.g. 0288.',
+            'The display prompt is only used when "use specific display prompt" is ticked.'] },
+    CALLSCRN: { title: 'Call screening list', what: 'Numbers that get special treatment: free calls (911, 800 numbers), blocked numbers, operator and directory assistance.',
+        tips: ['In a number, F matches any single digit and B links to another entry.',
+            'Tick "free call" for numbers that cost nothing to call.',
+            'The feature configuration table refers to operator and AOS entries here by entry number.'] },
+    RDLIST: { title: 'Repertory dialer list', what: 'The speed-dial list: numbers callers can choose from the display instead of dialing.',
+        tips: ['Each entry has two display lines of 20 characters.', 'Clear an entry to take it off the list.'] },
+    SERVLEV: { title: 'Limited service levels', what: 'Up to five times of day when service is limited, e.g. emergency calls only overnight.',
+        tips: ['Start time and duration are HH:MM, in the terminal\'s local time.', 'Set an entry to "No restriction" to switch it off.'] },
+    RATE: { title: 'Rate table', what: 'Prices: an initial charge for an initial period, then an additional charge for each additional period.',
+        tips: ['Charges are in dollars. Periods are in seconds, or unlimited.',
+            'The international rating table refers to entries 28 and up.'] },
+    RATEINT: { title: 'International rating', what: 'How calls to each country code are rated: blocked, rated by the manager, or priced with a rate table entry.',
+        tips: ['Rating 1 blocks the country. 2–63 use rate table entry 28 + n.', 'Countries that aren\'t listed use the default rate in the header.'] },
+    LCD: { title: 'Local call determination', what: 'For one area code (NPA), whether a call to each exchange (NXX) is local, toll, or invalid.',
+        tips: ['Set the area code first, then paint exchanges with a value.', 'Use "set a range" for long runs of exchanges.',
+            'generate_lcd_lata.py (US) and generate_lcd_lir.py (Canada) build these tables from public data.'] },
+    RATENPA: { title: 'NPA set-based rating', what: 'How the phone treats each area code: domestic (then checked against the LCD tables), foreign, unassigned or not available.',
+        tips: ['generate_npa.py builds this table from the NANPA area code list.', 'Paint area codes, or use "set a range".'] },
+    COINVL: { title: 'Coin validation', what: 'What each coin is worth, how much room it takes, and when the cash box counts as full.',
+        tips: ['The terminal raises an alarm when the cash box goes past the thresholds.'] },
+    SMCARD: { title: 'Smart card parameters', what: 'Smart card (chip card) keys, unit multipliers, rebates and surcharges.',
+        tips: ['Leave this table as it is unless you use smart cards.'] },
+    MODEM: { title: 'Modem parameters', what: 'Settings for the terminal\'s own modem. The layout is not documented.',
+        tips: ['Copy this table from a working set rather than editing it.'] },
+    DIALRL: { title: 'Dialing rules', what: 'The numbering plan: how the terminal classifies and formats the digits a caller dials.',
+        tips: ['The layout is not documented, so only change bytes you understand.'] },
+    SPARE: { title: 'Spare table', what: 'Required by V1.3 control boards, unused by V1.0.', tips: ['Keep the copy that ships in tables/default.'] },
+};
+
+const VIEW_TIPS = {
+    struct: 'Every change goes into this tab\'s copy of the file straight away. Press save when you\'re done, or revert to throw your changes away.',
+    list: 'Click a row (or Tab to it and press Enter) to edit it in the form below. "add entry" jumps to the first free one; copy and paste move a whole entry.',
+    prompts: 'Type straight into a prompt. Use "find text" to search all of them.',
+    grid: 'Pick a value, then click exchanges to set them. With a mouse or pen you can drag across many at once.',
+    bytes: 'Type two hex digits per byte and the cursor moves on by itself. Hover a byte to see which field it belongs to.',
+};
+
+let hintsOn = safeStorage(s => s.getItem('mmTableEditor.hints'), null) !== 'off';
+
+const TIP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7l-5 4v-4H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><circle cx="8" cy="10.5" r="1.4" fill="var(--paper)"/><circle cx="12" cy="10.5" r="1.4" fill="var(--paper)"/><circle cx="16" cy="10.5" r="1.4" fill="var(--paper)"/></svg>';
+
+function tip(...kids) {
+    return h('div', { class: 'tip' }, h('span', { class: 'tip-icon', html: TIP_ICON }), h('div', null, h('strong', null, 'hint: '), ...kids));
+}
+
+function aboutTable(d) {
+    const help = TABLE_HELP[d.code];
+    if (!help) return null;
+    return h('div', { class: 'bubble teal about' },
+        h('p', null, h('strong', null, 'what it does: '), help.what),
+        help.tips.length ? h('ul', null, help.tips.map(t => h('li', null, t))) : null);
+}
+
+function applyHints() {
+    document.body.classList.toggle('no-hints', !hintsOn);
+    const btn = $('#hints-btn');
+    btn.textContent = `hints: ${hintsOn ? 'on' : 'off'}`;
+    btn.setAttribute('aria-pressed', hintsOn ? 'true' : 'false');
+    safeStorage(s => s.setItem('mmTableEditor.hints', hintsOn ? 'on' : 'off'));
+}
+
+/* =====================================================================
+ * Practice tables, used by the tour (copies of tables/default)
+ * ===================================================================== */
+
+const PRACTICE = {
+    0x1a: 'AgEFDwABAF8PMQACDwAAAAAAAAAADwADCAgABwoAeAAFCgEteAAAAAEFGQAZAA4AAA4FAwAA9AHIAOgDMgAyACwBAAUAAAA=',
+    0x1d: 'WAICACAgTG9jYWwgY29pbiBjYWxscyAgyAAAACAgICAgIDUwLWNlbnRzICAgICAgAABDAENvaW4gY2FsbHMgYW55d2hlcmUgAAADAGluIHRoZSBVUywganVzdCAgICAglgAFACQxLjAwIGZvciA0LW1pbnV0ZXMgZAABACAgICAgTm8gQ2hhbmdlPyAgICAgAABDAERpYWwgJzAnLi4uICAgICAgICAgAAAFACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAADAFRoYW5rIHlvdSBmb3IgdXNpbmcgyAADACAgWW91ciB2ZXJ5IG93biAgICAgyAAFACAgTm9ydGVsIE1pbGxlbm5pdW0hAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAgAAAAACAgICAgICAgICAgICAgICAgICAg',
+    0x88: 'QI4gAAMIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALAAMAAAAAIAAAAAAAAAAAAAAAAAAAAAAwwyAACAIIAAAAAAAAACAgAAAAAAAAAACAAAMAAAAAAAAAAAAAAwAAAAAAAAADAAAADAIDgAAAAACIAAAAAwAiACAPwIAqCACCAMAICyAACAAAAAAAAAAAAAoCAACKCAAAAAADwA/AAAAgAAAgigqAgAAAAAAAAAAAAAAgAAAjAAAAAAAAAAAADAAPAADAAAAAAAAAAA==',
+};
+const fromBase64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const practiceFile = id => state.files.find(f => f.practice && f.tableId === id);
+
+function loadPractice() {
+    for (const [id, data] of Object.entries(PRACTICE)) {
+        const f = addFile({ path: `practice/${tableFileName(+id)}`, data: fromBase64(data) });
+        Object.assign(f, { practice: true, practiceSaved: false, view: null, sel: null, brush: null });
+    }
+    if (!state.current) state.current = practiceFile(0x1a);
+    renderAll();
+}
+
+function removePractice() {
+    state.files = state.files.filter(f => !f.practice);
+    if (!state.files.includes(state.current)) state.current = state.files[0] || null;
+    renderAll();
+}
+
+function selectFile(f) {
+    if (!f) return;
+    state.current = f;
+    renderSidebar();
+    renderEditor();
+}
+
+/* =====================================================================
+ * Help tab
+ * ===================================================================== */
+
+/* table_list_* in src/mm_manager.c */
+const FIRMWARE_TABLES = [
+    ['MTR 2.x', [0x15, 0x1a, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x3e, 0x48, 0x49, 0x55, 0x56, 0x5c, 0x5d, 0x86, 0x87,
+        ...range(14).map(i => 0x88 + i), 0x96, 0x97, 0xa0, 0xa1]],
+    ['MTR 1.20', [0x15, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x3e, 0x49, 0x5c, 0x5d, 0x86, 0x87,
+        ...range(14).map(i => 0x88 + i), 0x96, 0x97, 0xa0, 0xa1]],
+    ['MTR 1.9 – 1.13', [0x15, 0x16, 0x17, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x3e, 0x49, 0x5c, 0x5d,
+        ...range(7).map(i => 0x65 + i)]],
+    ['MTR 1.6 – 1.7', [0x15, 0x16, 0x17, 0x18, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x3e, 0x49,
+        ...range(8).map(i => 0x4a + i), 0x5a, 0x5b]],
+    ['MTR 1.7 international', [0x15, 0x16, 0x17, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x32, 0x37, 0x3a, 0x18, 0x3e, 0x49,
+        ...range(7).map(i => 0x4a + i)]],
+];
+
+const GLOSSARY = [
+    ['NCC', 'The Millennium Manager, i.e. mm_manager. The NCC number is the number the payphone dials to reach it.'],
+    ['NPA / NXX', 'Area code / exchange: the first three and the next three digits of a North American phone number.'],
+    ['LATA', 'A local access and transport area. Calls inside one are intra-LATA, calls between them inter-LATA.'],
+    ['LCD', 'Local call determination: tables that say which exchanges are local or toll from this payphone.'],
+    ['MTR', 'The terminal\'s firmware generation. It decides which tables mm_manager sends.'],
+    ['Terminal ID', 'The payphone\'s own 10-digit phone number, used as the name of its terminal-specific table folder.'],
+    ['Craft menu', 'The installer menu on the payphone, reached by dialing the access code (default CRASERV, 2727378).'],
+    ['CIC', 'Carrier identification code: the 4-digit number that identifies a long-distance carrier.'],
+    ['PIC', 'Presubscribed interexchange carrier: the default long-distance carrier for a line.'],
+    ['FGB', 'Feature group B: carrier access through numbers like 950-XXXX or 1-800.'],
+    ['AOS', 'Automated (alternate) operator services.'],
+    ['ACCS', 'Automated calling card service: card validation by the network instead of by the manager.'],
+    ['LMS', 'Local measured service: local calls charged by time.'],
+    ['MCE', 'Manual card entry: a card number typed on the keypad instead of swiped.'],
+    ['CDR', 'Call detail record: the terminal\'s record of a call, uploaded to the manager.'],
+    ['IAS', 'Answer supervision: how the payphone knows a call was answered, by line polarity reversal.'],
+    ['PAN', 'Primary account number: the number on a card.'],
+    ['VFD', 'The payphone\'s vacuum fluorescent display: 2 lines of 20 characters.'],
+];
+
+function renderHelp() {
+    const host = $('#view-help');
+    host.replaceChildren();
+    const openId = id => {
+        const f = state.files.find(x => x.tableId === id && x.folder === 'default') || state.files.find(x => x.tableId === id);
+        if (f) { showView('tables'); selectFile(f); }
+    };
+    const chip = id => {
+        const gen = GENERATED.find(g => g[0] === id);
+        const d = DEFS[id];
+        const label = `${hexId(id)} ${gen ? gen[1] : d ? d.code : ''}`;
+        const open = !gen && state.files.some(x => x.tableId === id);
+        if (open) return h('button', { class: 'badge pink chip-btn', type: 'button', title: `open ${d ? d.name : label}`, onclick: () => openId(id) }, label);
+        return h('span', { class: 'badge paper' + (gen ? ' gen' : ''), title: gen ? `${gen[2]}: made by mm_manager` : (d ? d.name : '') }, label);
+    };
+    const section = (id, title, ...body) => h('section', { class: 'card', id: 'help-' + id, 'aria-labelledby': 'help-h-' + id },
+        h('h2', { id: 'help-h-' + id }, title), ...body);
+    const codes = Object.keys(TABLE_HELP);
+
+    const nav = h('nav', { class: 'card help-nav', 'aria-label': 'Help topics' },
+        h('div', { class: 'overline' }, 'on this page'),
+        h('ul', null, [['start', 'start here'], ['where', 'where tables live'], ['firmware', 'tables for your phone'],
+            ['guide', 'table guide'], ['generated', 'made by mm_manager'], ['safe', 'staying safe'], ['keys', 'keys and tricks'], ['glossary', 'glossary']]
+            .map(([id, label]) => h('li', null, h('a', { href: '#help-' + id, onclick: e => {
+                e.preventDefault();
+                $('#help-' + id).scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+            } }, label)))),
+        h('div', { class: 'btns', style: 'margin-top:16px' },
+            h('button', { class: 'btn primary', type: 'button', onclick: startTour }, 'take the tour'),
+            h('button', { class: 'btn small', type: 'button', onclick: showWelcome }, 'show the welcome')));
+
+    const body = h('div', { class: 'sections' },
+        section('start', 'start here',
+            h('ol', { class: 'steps' },
+                h('li', null, h('strong', null, 'Open your tables. '), 'Press ', h('em', null, 'open folder'), ' and choose the ', h('code', null, 'tables/'),
+                    ' folder next to mm_manager (the one with ', h('code', null, 'default/'), ' inside). You can also open single ', h('code', null, 'mm_table_XX.bin'),
+                    ' files, or drop them on the page.'),
+                h('li', null, h('strong', null, 'Pick a table. '), 'The list shows a short code and a plain name for each. The table guide below says what each one does.'),
+                h('li', null, h('strong', null, 'Change it. '), 'Notes under each field give the units and the allowed range. A field with a dashed pink border isn\'t stored until you fix it.'),
+                h('li', null, h('strong', null, 'Save. '), 'In Chrome and Edge, save writes the file back in place. Other browsers download it; copy it into the same folder.'),
+                h('li', null, h('strong', null, 'Let the payphone pick it up. '), 'mm_manager sends tables when the terminal calls in for them. To get them sooner, use ',
+                    h('em', null, 'force download'), ' in the payphone\'s craft menu. mm_manager then sends the tables that changed (all of them with ', h('code', null, '-c'), ').'))),
+        section('where', 'where tables live',
+            h('p', null, 'For each table, mm_manager uses the first file it finds in:'),
+            h('ol', null,
+                h('li', null, h('code', null, 'tables/<terminal number>/'), ' — just for one payphone, named after its 10-digit number'),
+                h('li', null, h('code', null, 'tables/<model>/'), ' — ', h('code', null, 'multipay'), ', ', h('code', null, 'card_only'), ', ', h('code', null, 'desk'),
+                    ', ', h('code', null, 'coin'), ' or ', h('code', null, 'inmate')),
+                h('li', null, h('code', null, 'tables/default/'), ' — everything else')),
+            h('p', null, 'So to give one payphone its own advertising messages, open its table and press ', h('em', null, 'copy for a terminal'),
+                '. The folders can be changed with ', h('code', null, '-t'), ' and ', h('code', null, '-d'), ' in manager settings.')),
+        section('firmware', 'tables for your phone',
+            h('p', null, 'mm_manager sends a different set of tables to each firmware generation (MTR). It prints the terminal type and firmware when a payphone calls in. Coin-only phones skip the card tables; card-only and desk phones skip coin validation; ',
+                h('code', null, '-s'), ' sends only the required tables.'),
+            h('div', { class: 'table-wrap', style: 'max-height:none' }, h('table', { class: 'grid fw' },
+                h('thead', null, h('tr', null, h('th', null, 'firmware'), h('th', null, 'tables sent'))),
+                h('tbody', null, FIRMWARE_TABLES.map(([name, ids]) => h('tr', null, h('td', { class: 'idx' }, name),
+                    h('td', null, h('div', { class: 'chips' }, ids.map(chip)))))))),
+            h('p', { class: 'meta', style: 'margin-top:12px' }, 'Pink chips are tables you have open: click one to edit it. Dashed chips are made by mm_manager. 0x1e is also made by mm_manager when there is no file for it.')),
+        section('guide', 'table guide',
+            h('div', { class: 'guide' }, codes.map(code => {
+                const help = TABLE_HELP[code];
+                const ids = Object.values(DEFS).filter(d => d.code === code).map(d => d.id);
+                return h('details', null,
+                    h('summary', null, h('span', { class: 'badge pink' }, code), h('span', null, help.title),
+                        h('span', { class: 'meta' }, ids.length > 3 ? `${hexId(ids[0])} – ${hexId(ids[ids.length - 1])}` : ids.map(hexId).join(', '))),
+                    h('p', null, help.what),
+                    h('ul', null, help.tips.map(t => h('li', null, t))));
+            }))),
+        section('generated', 'made by mm_manager',
+            h('p', null, 'These tables are built on every download instead of being read from files, so you change them with command-line options in ',
+                h('a', { href: '#', onclick: e => { e.preventDefault(); showView('manager'); } }, 'manager settings'), '.'),
+            h('ul', { class: 'gen-list' }, GENERATED.map(([id, code, name, how]) => h('li', null,
+                h('div', null, h('span', { class: 'badge paper' }, `${hexId(id)} ${code}`), ' ', h('strong', null, name)), h('div', { class: 'meta' }, how))))),
+        section('safe', 'staying safe',
+            h('ul', null,
+                h('li', null, 'Keep a copy of your ', h('code', null, 'tables/'), ' folder before big changes. If you cloned the repository, git already keeps one.'),
+                h('li', null, h('em', null, 'revert'), ' throws away unsaved changes to a table. Closing the tab warns you about unsaved changes.'),
+                h('li', null, 'A wrong table can make the payphone raise a table alarm or go out of service. Change one thing at a time and test.'),
+                h('li', null, 'A file with the wrong size opens as bytes only, with an offer to pad or trim it.'))),
+        section('keys', 'keys and tricks',
+            h('ul', null,
+                h('li', null, 'Lists: Tab to a row and press Enter or Space to edit it. Use the filter to find entries.'),
+                h('li', null, 'Bytes: typing two hex digits moves to the next byte.'),
+                h('li', null, 'Maps: drag with a mouse or pen to paint; on touch screens, tap each exchange or use "set a range".'),
+                h('li', null, 'Copy an entry in one table and paste it into another table of the same kind.'),
+                h('li', null, 'Turn hints off with the "hints" button at the top once you know your way around.'),
+                h('li', null, 'During the tour, Esc ends it.'))),
+        section('glossary', 'glossary',
+            h('dl', { class: 'glossary' }, GLOSSARY.map(([t, d]) => [h('dt', null, t), h('dd', null, d)]))));
+
+    host.append(h('div', { class: 'help-grid' }, h('div', { class: 'side' }, nav), body));
+}
+
+/* =====================================================================
+ * Onboarding
+ * ===================================================================== */
+
+function showWelcome() {
+    const dlg = $('#dialog');
+    safeStorage(s => s.setItem('mmTableEditor.onboarded', '1'));
+    const go = fn => () => { dlg.close(); if (fn) fn(); };
+    dlg.replaceChildren(h('div', { class: 'welcome' },
+        h('div', { class: 'overline' }, 'welcome'),
+        h('h2', null, 'hi! let\'s get your payphone talking.'),
+        h('p', null, 'This page edits the tables mm_manager sends to a Nortel Millennium payphone: the messages on its display, prices, free numbers, cards and more. It also builds the command that starts mm_manager.'),
+        h('ol', { class: 'steps compact' },
+            h('li', null, 'Open your ', h('code', null, 'tables/'), ' folder, or a few ', h('code', null, '.bin'), ' files.'),
+            h('li', null, 'Pick a table and change it with the form.'),
+            h('li', null, 'Save. The payphone gets the new table the next time it downloads.')),
+        h('p', { class: 'meta' }, 'Nothing leaves your computer. New here? The tour takes about three minutes and uses practice tables.'),
+        h('div', { class: 'btns', style: 'justify-content:flex-start' },
+            h('button', { class: 'btn primary', type: 'button', onclick: go(startTour) }, 'show me around'),
+            h('button', { class: 'btn', type: 'button', onclick: go(() => { showView('tables'); openFolder(); }) }, 'open my tables'),
+            h('button', { class: 'btn link', type: 'button', onclick: go(() => showView('help')) }, 'read the guide'),
+            h('button', { class: 'btn link', type: 'button', onclick: go(null) }, 'skip'))));
+    dlg.showModal();
+    dlg.querySelector('.btn.primary').focus();
+}
+
+/* =====================================================================
+ * Live tutorial: spotlights real controls and waits for the user
+ * ===================================================================== */
+
+const q = sel => document.querySelector(sel);
+const isCurrent = id => !!state.current && state.current === practiceFile(id);
+const setInput = (el, value, type = 'input') => { if (!el) return; el.value = value; el.dispatchEvent(new Event(type, { bubbles: true })); };
+const ensureFile = (id, extra = {}) => () => {
+    showView('tables');
+    const f = practiceFile(id);
+    if (!f) return;
+    let rerender = state.current !== f;
+    for (const [k, v] of Object.entries(extra)) if (f[k] !== v) { f[k] = v; rerender = true; }
+    state.current = f;
+    if (rerender) renderAll();
+};
+const ADMESS_AT = (i, key) => i * ADMESS_ENTRY.size + ADMESS_ENTRY.map[key].o;
+
+const TOUR_STEPS = [
+    { title: 'welcome to the tour', body: 'We\'ve opened three practice tables in a practice/ folder. Try anything: they only live in this tab, and saving them doesn\'t write a file. The page still works while the tour runs, so you\'ll press the real buttons.' },
+    { before: () => showView('tables'), target: () => q('#file-list'), title: 'your tables',
+        body: 'Open tables are listed here, grouped by folder. With your real tables/ folder you\'d see default/, the model folders and a folder for each terminal number.' },
+    { before: () => showView('tables'), target: () => q('.file-item[data-path="practice/mm_table_1d.bin"]'), title: 'pick a table',
+        body: 'Each table has a short code, like ADMESS, and a plain name.', task: 'click "Advertising messages".',
+        check: () => isCurrent(0x1d), auto: true, doIt: () => selectFile(practiceFile(0x1d)) },
+    { before: ensureFile(0x1d), target: () => q('#editor .card.raised'), title: 'the table header',
+        body: 'The table ID and file name, and the buttons to save, download or copy it for one terminal. An "edited" sticker appears as soon as you change something.' },
+    { before: ensureFile(0x1d, { view: 'fields' }), target: () => q('[data-tour="entries"]'), title: 'entries',
+        body: 'List tables have one row per entry. The form below the list edits the row you pick.', task: 'click the row for message 3.',
+        check: () => isCurrent(0x1d) && state.current.sel === 3, auto: true, doIt: () => { state.current.sel = 3; renderEditor(); } },
+    { before: ensureFile(0x1d, { view: 'fields', sel: 3 }), snap: () => readText(practiceFile(0x1d).bytes, ADMESS_AT(3, 'message_text'), 20),
+        target: () => q('[data-key="message_text"] input'), title: 'change the words',
+        body: 'A message holds up to 20 characters, the width of the payphone\'s display.', task: 'type a new message, e.g. "say something!".',
+        check: snap => readText(practiceFile(0x1d).bytes, ADMESS_AT(3, 'message_text'), 20) !== snap,
+        doIt: () => setInput(q('[data-key="message_text"] input'), 'say something!') },
+    { before: ensureFile(0x1d, { view: 'fields', sel: 3 }), target: () => q('[data-tour="preview"]'), title: 'preview',
+        body: 'Roughly how the message looks on the payphone, effect included.' },
+    { before: ensureFile(0x1d, { view: 'fields', sel: 3 }), snap: () => practiceFile(0x1d).bytes[ADMESS_AT(3, 'display_attr')],
+        target: () => q('[data-key="display_attr"]'), title: 'pick an effect',
+        body: 'Messages can stay still, flash or scroll. "blank before" clears the display first.', task: 'choose a different effect.',
+        check: snap => practiceFile(0x1d).bytes[ADMESS_AT(3, 'display_attr')] !== snap, auto: true,
+        doIt: () => { const sel = q('[data-key="display_attr"] select'); setInput(sel, sel.value === '3' ? '1' : '3', 'change'); } },
+    { before: ensureFile(0x1d), target: () => q('#ed-dirty'), title: 'edited, not saved',
+        body: 'Your change lives in this tab until you save. A ● in the list marks every table with unsaved changes, and "save all changes" saves them together.' },
+    { before: ensureFile(0x1d), target: () => q('#editor .subtabs [data-view="bytes"]'), title: 'under the hood',
+        body: 'Every table can also be edited byte by byte: handy for tables nobody has documented yet.', task: 'click "bytes".',
+        check: () => isCurrent(0x1d) && state.current.view === 'bytes', auto: true, doIt: () => { state.current.view = 'bytes'; renderEditor(); } },
+    { before: ensureFile(0x1d, { view: 'bytes' }), target: () => q('[data-tour="hex"]'), title: 'bytes',
+        body: 'Your edits are highlighted in yellow. Hover over or focus a byte to see which field it belongs to.' },
+    { before: () => showView('tables'), target: () => q('.file-item[data-path="practice/mm_table_88.bin"]'), title: 'maps',
+        body: 'Local call tables are easier to read as a map.', task: 'open "Double-compressed LCD 1".',
+        check: () => isCurrent(0x88), auto: true, doIt: () => selectFile(practiceFile(0x88)) },
+    { before: ensureFile(0x88, { view: 'fields' }), target: () => q('[data-tour="palette"]'), title: 'pick a value',
+        body: 'Each exchange in this area code is local, toll or invalid. First pick what to paint with.', task: 'choose "intra-LATA toll".',
+        check: () => isCurrent(0x88) && state.current.brush === 2, auto: true, doIt: () => q('[data-tour="palette"] button:nth-child(3)').click() },
+    { before: ensureFile(0x88, { view: 'fields' }), snap: () => practiceFile(0x88).bytes.slice(), target: () => q('.block'), title: 'paint',
+        body: 'Click an exchange to set it. With a mouse you can drag across many; "set a range" further down sets long runs exactly.', task: 'click a few exchanges.',
+        check: snap => practiceFile(0x88).bytes.some((v, i) => v !== snap[i]),
+        doIt: () => { for (const n of [200, 201, 202]) q(`.cell[data-n="${n}"]`).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })); } },
+    { before: ensureFile(0x88), target: () => q('[data-tour="save"]'), title: 'save',
+        body: 'With a real folder open in Chrome or Edge, save writes the file back in place; elsewhere it downloads the file for you to copy into tables/. This one is practice, so nothing is written.',
+        task: 'press save.', check: () => isCurrent(0x88) && state.current.practiceSaved, auto: true, doIt: () => saveFile(state.current) },
+    { target: () => q('.tabs .tab[data-view="manager"]'), title: 'starting mm_manager',
+        body: 'Some settings aren\'t in table files: they are options on mm_manager\'s command line.', task: 'open "manager settings".',
+        check: () => state.view === 'manager', auto: true, doIt: () => showView('manager') },
+    { before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-mgr="ncc1"]'), title: 'the number to call',
+        body: 'The primary NCC number is what the payphone dials to reach this manager. mm_manager writes it into the terminal on every download. Your own settings come back when the tour ends.',
+        task: 'type a number, e.g. 18005551234.', check: () => /^\d{1,15}$/.test(mgr.ncc1 || ''),
+        doIt: () => setInput(q('[data-mgr="ncc1"] input'), '18005551234') },
+    { before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-tour="command"]'), title: 'your command',
+        body: 'This updates as you type. Copy it and run it from the folder that holds mm_manager and tables/. Anything missing is listed under it.' },
+    { target: () => q('.tabs .tab[data-view="help"]'), title: 'that\'s the tour!',
+        body: 'The help tab has the full guide: which tables each firmware gets, what every table does, and a glossary. The dashed hints and table notes can be switched off with "hints" at the top.', last: true },
+];
+
+const tour = { i: -1, timer: null, done: false, snap: null, autoTimer: null, mgrBefore: null };
+
+function startTour() {
+    const dlg = $('#dialog');
+    if (dlg.open) dlg.close();
+    tour.mgrBefore = { ...mgr };
+    loadPractice();
+    $('#tour').hidden = false;
+    clearInterval(tour.timer);
+    tour.timer = setInterval(tourTick, 250);
+    window.addEventListener('resize', placeTour);
+    window.addEventListener('scroll', placeTour, true);
+    document.addEventListener('keydown', tourKeys);
+    goStep(0);
+}
+
+function endTour(keepPractice = true) {
+    clearInterval(tour.timer);
+    clearTimeout(tour.autoTimer);
+    tour.i = -1;
+    $('#tour').hidden = true;
+    window.removeEventListener('resize', placeTour);
+    window.removeEventListener('scroll', placeTour, true);
+    document.removeEventListener('keydown', tourKeys);
+    if (tour.mgrBefore) {
+        Object.assign(mgr, tour.mgrBefore);
+        saveMgr();
+        tour.mgrBefore = null;
+        if (state.view === 'manager') renderManager();
+    }
+    if (!keepPractice) removePractice();
+    safeStorage(s => s.setItem('mmTableEditor.onboarded', '1'));
+}
+
+function tourKeys(e) {
+    if (e.key === 'Escape' && !$('#dialog').open) { e.preventDefault(); endTour(true); toast('tour ended — restart it any time from the top of the page', 'info'); }
+}
+
+function goStep(i) {
+    clearTimeout(tour.autoTimer);
+    tour.i = Math.max(0, Math.min(TOUR_STEPS.length - 1, i));
+    const step = TOUR_STEPS[tour.i];
+    if (step.before) step.before();
+    tour.snap = step.snap ? step.snap() : null;
+    tour.done = !step.check || step.check(tour.snap);
+    const el = step.target && step.target();
+    if (el) {
+        /* Keep the target in the middle of the screen so the card fits above or below it. */
+        const r = el.getBoundingClientRect(), H = window.innerHeight;
+        if (r.top < 80 || r.bottom > H * 0.62) {
+            el.scrollIntoView({ block: r.height > H * 0.5 ? 'start' : 'center',
+                behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        }
+    }
+    drawTourCard(true);
+    placeTour();
+}
+
+function drawTourCard(fresh) {
+    const step = TOUR_STEPS[tour.i];
+    const card = q('.tour-card');
+    const next = () => goStep(tour.i + 1);
+    const status = step.check
+        ? h('p', { class: 'tour-status' + (tour.done ? ' done' : '') }, tour.done ? 'nice one!' : `your turn: ${step.task}`)
+        : null;
+    const buttons = step.last
+        ? [h('button', { class: 'btn primary', type: 'button', onclick: () => endTour(true) }, 'keep the practice tables'),
+            h('button', { class: 'btn', type: 'button', onclick: () => endTour(false) }, 'remove them')]
+        : [h('button', { class: 'btn primary', type: 'button', disabled: !tour.done, onclick: next }, tour.i === 0 ? 'let\'s go' : 'next'),
+            step.doIt && !tour.done ? h('button', { class: 'btn small', type: 'button', onclick: () => step.doIt() }, 'do it for me') : null];
+    card.replaceChildren(
+        h('div', { 'aria-live': 'polite' },
+            h('div', { class: 'overline' }, `tour · ${tour.i + 1} of ${TOUR_STEPS.length}`),
+            h('h2', { id: 'tour-title', tabindex: '-1' }, step.title),
+            h('p', null, step.body),
+            status),
+        h('div', { class: 'btns' }, buttons,
+            tour.i > 0 && !step.last ? h('button', { class: 'btn link', type: 'button', onclick: () => goStep(tour.i - 1) }, 'back') : null,
+            !step.last ? h('button', { class: 'btn link', type: 'button', onclick: () => endTour(true) }, 'end tour') : null));
+    /* Leave focus alone when the user has something to do on the page. */
+    if (fresh && (!step.check || tour.done)) q('#tour-title').focus({ preventScroll: true });
+}
+
+function tourTick() {
+    if (tour.i < 0) return;
+    const step = TOUR_STEPS[tour.i];
+    if (step.check && !tour.done && step.check(tour.snap)) {
+        tour.done = true;
+        drawTourCard(false);
+        if (step.auto) tour.autoTimer = setTimeout(() => goStep(tour.i + 1), 900);
+    }
+    placeTour();
+}
+
+function placeTour() {
+    if (tour.i < 0) return;
+    const step = TOUR_STEPS[tour.i];
+    const ring = q('.tour-ring'), card = q('.tour-card');
+    const W = window.innerWidth, H = window.innerHeight;
+    const el = step.target && step.target();
+    const r = el && el.getClientRects().length ? el.getBoundingClientRect() : null;
+    const cw = card.offsetWidth, ch = card.offsetHeight;
+    if (!r) {
+        Object.assign(ring.style, { left: W / 2 + 'px', top: H / 2 + 'px', width: '0px', height: '0px' });
+        ring.classList.add('none');
+        Object.assign(card.style, { left: Math.max(16, (W - cw) / 2) + 'px', top: Math.max(16, (H - ch) / 2) + 'px' });
+        card.dataset.side = 'none';
+        return;
+    }
+    const pad = 6;
+    ring.classList.remove('none');
+    Object.assign(ring.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px' });
+    let top = r.bottom + pad + 24, side = 'below';
+    if (top + ch > H - 16) { top = r.top - pad - 24 - ch; side = 'above'; }
+    if (top < 16) { top = Math.max(16, H - ch - 16); side = 'none'; }
+    const left = Math.min(Math.max(16, r.left), Math.max(16, W - cw - 16));
+    Object.assign(card.style, { left: left + 'px', top: top + 'px' });
+    card.dataset.side = side;
+    card.style.setProperty('--tail-x', Math.min(Math.max(24, r.left + r.width / 2 - left - 16), cw - 56) + 'px');
+}
+
+/* =====================================================================
  * App shell
  * ===================================================================== */
 
@@ -2723,9 +3323,10 @@ function renderAll() {
 function showView(view) {
     state.view = view;
     document.querySelectorAll('.tabs .tab').forEach(t => t.setAttribute('aria-selected', t.dataset.view === view ? 'true' : 'false'));
-    for (const v of ['tables', 'manager', 'roms']) $('#view-' + v).hidden = v !== view;
+    for (const v of ['tables', 'manager', 'roms', 'help']) $('#view-' + v).hidden = v !== view;
     if (view === 'manager') renderManager();
     if (view === 'roms') renderRoms();
+    if (view === 'help') renderHelp();
     safeStorage(s => s.setItem('mmTableEditor.view', view));
 }
 
@@ -2767,7 +3368,7 @@ function init() {
         renderAll();
     });
     window.addEventListener('beforeunload', e => {
-        if (state.files.some(isDirty) || (roms.rows.length && romCsv() !== roms.orig)) { e.preventDefault(); e.returnValue = ''; }
+        if (state.files.some(f => !f.practice && isDirty(f)) || (roms.rows.length && romCsv() !== roms.orig)) { e.preventDefault(); e.returnValue = ''; }
     });
 
     const themes = ['auto', 'light', 'dark'];
@@ -2776,10 +3377,19 @@ function init() {
     applyTheme(theme);
     $('#theme-btn').addEventListener('click', () => { theme = themes[(themes.indexOf(theme) + 1) % themes.length]; applyTheme(theme); });
 
+    $('#tour-btn').addEventListener('click', startTour);
+    $('#hints-btn').addEventListener('click', () => {
+        hintsOn = !hintsOn;
+        applyHints();
+        toast(hintsOn ? 'hints are back on' : 'hints off — turn them back on at the top, or find everything in help', 'info');
+    });
+    applyHints();
+
     if (!fsAccess) $('#open-folder-btn').title = 'This browser opens folders read-only; saving downloads the files.';
     renderAll();
     const view = safeStorage(s => s.getItem('mmTableEditor.view'), null);
-    showView(['tables', 'manager', 'roms'].includes(view) ? view : 'tables');
+    showView(['tables', 'manager', 'roms', 'help'].includes(view) ? view : 'tables');
+    if (!safeStorage(s => s.getItem('mmTableEditor.onboarded'), '1')) showWelcome();
 }
 
 init();

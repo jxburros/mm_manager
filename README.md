@@ -124,6 +124,8 @@ These are the same settings that make fax and modem calls work over VoIP:
 * **Manager settings.** This tab builds the `mm_manager` command line: SIP or serial modem, NCC numbers, access code, key card, table folders and logging. It also lists the tables that mm_manager generates on each download, and which option controls each one.
 * **ROM versions.** This tab edits `config/control_rom_versions.csv`, which maps control ROM editions to terminal types. It checks each row against the limits of mm_manager's CSV reader.
 
+* **Help and tour.** The first visit opens a short welcome. *Take the tour* walks you through the real controls on practice tables, waiting for you to do each step (or doing it for you). The *help* tab has the full guide: where mm_manager looks for tables, which tables each firmware version gets, what every table does, and a glossary. Each table also shows what it does and a few tips; turn these hints off with *hints* at the top.
+
 In Chrome, Edge and other Chromium browsers, *save* writes straight back to the folder you opened. In other browsers, *save* downloads the file, and you copy it into place.
 
 
