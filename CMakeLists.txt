@@ -288,7 +288,7 @@ install(DIRECTORY tables/card_only DESTINATION share/mm_manager/tables)
 install(DIRECTORY tables/coin DESTINATION share/mm_manager/tables)
 install(DIRECTORY tables/desk DESTINATION share/mm_manager/tables)
 install(FILES LICENSE DESTINATION .)
-install(FILES README.md DESTINATION .)
+install(FILES README.md MM_MANAGER.md DESTINATION .)
 install(FILES generate_advert_prompts.py generate_intl_sbr.py generate_lcd.py generate_lcd_lata.py generate_lcd_lir.py generate_npa.py mm_lcd.py DESTINATION bin)
 install(FILES html/table_editor.html DESTINATION share/mm_manager/html)
 # generate_intl_sbr.py reads icc_dial_codes.csv from the working folder.
