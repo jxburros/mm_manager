@@ -1675,10 +1675,12 @@ static void api_phone_rename(request_t *req) {
         }
         sqlite3_finalize(st);
         for (int i = 0; i < n; i++) {
-            char sql[256];
-            int  has_id = 0;
+            char *sql = sqlite3_mprintf("PRAGMA table_info(\"%w\")", names[i]);
+            int   has_id = 0;
 
-            snprintf(sql, sizeof(sql), "PRAGMA table_info(\"%s\")", names[i]);
+            if (sql == NULL) {
+                continue;
+            }
             if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK) {
                 while (sqlite3_step(st) == SQLITE_ROW) {
                     const char *col = (const char *)sqlite3_column_text(st, 1);
@@ -1689,10 +1691,14 @@ static void api_phone_rename(request_t *req) {
                 }
             }
             sqlite3_finalize(st);
+            sqlite3_free(sql);
             if (!has_id) {
                 continue;
             }
-            snprintf(sql, sizeof(sql), "UPDATE OR IGNORE \"%s\" SET TERMINAL_ID = ?1 WHERE TERMINAL_ID = ?2", names[i]);
+            sql = sqlite3_mprintf("UPDATE OR IGNORE \"%w\" SET TERMINAL_ID = ?1 WHERE TERMINAL_ID = ?2", names[i]);
+            if (sql == NULL) {
+                continue;
+            }
             if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK) {
                 sqlite3_bind_text(st, 1, to, -1, SQLITE_STATIC);
                 sqlite3_bind_text(st, 2, from, -1, SQLITE_STATIC);
@@ -1701,6 +1707,7 @@ static void api_phone_rename(request_t *req) {
                 }
             }
             sqlite3_finalize(st);
+            sqlite3_free(sql);
         }
         sqlite3_close(db);
     }
