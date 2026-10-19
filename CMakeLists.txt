@@ -58,6 +58,19 @@ else()
     # Defaults are already set above
 endif()
 
+# The VERSION file is the version of record. Bump it, then tag the release with the same number (vX.Y.Z).
+if(EXISTS "${CMAKE_SOURCE_DIR}/VERSION")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/VERSION")
+    file(STRINGS "${CMAKE_SOURCE_DIR}/VERSION" _version_file LIMIT_COUNT 1)
+    string(STRIP "${_version_file}" _version_file)
+    if(_version_file MATCHES "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$")
+        set(CMAKE_PROJECT_VERSION "${_version_file}")
+        message(STATUS "Using version from VERSION file: ${CMAKE_PROJECT_VERSION}")
+    else()
+        message(WARNING "VERSION file doesn't contain X.Y or X.Y.Z. Using ${CMAKE_PROJECT_VERSION}.")
+    endif()
+endif()
+
 # Project name and version (using sanitized, CMake-compatible version)
 project(mm_manager VERSION ${CMAKE_PROJECT_VERSION})
 
