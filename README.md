@@ -49,12 +49,16 @@ Download it from the [releases page](https://github.com/jxburros/mm_manager/rele
 
 Start **`mm_gui`** and it opens the table editor in your web browser, with everything mm_manager needs on buttons:
 
-* **tables**: your `tables/` folder is open already. Saving writes straight back into it, in any browser.
-* **phones**: every payphone, by its terminal ID. Name it, change its ID when it changes on the phone, set how often it calls in, see whether its last update went through, and save its tables as a configuration to apply to other phones. See [several payphones](#several-payphones-updates-and-call-ins).
-* **manager settings**: pick SIP or a serial modem, fill in the number the payphone dials, and press *start mm_manager*. Its output scrolls by on the page. It keeps running when you close the page; the button at the top shows whether it is running.
-* **rom versions**: edits `config/control_rom_versions.csv` in place. mm_manager reads it when it starts.
-* **records**: what payphones reported when they called in (calls, alarms, cash box counts, software versions), read from `mm_manager.db`. Save rows as CSV, or download the database.
-* **tools**: the files in the working folder (download, upload, delete, turn a `.dlog` transcript into a `.pcap`, move generated tables into `tables/`), a scan for serial modems, and the Python table generators, with a button to install the packages they need. *Quit the control panel* stops everything.
+* **tables**
+  * *edit tables*: your `tables/` folder is open already. Saving writes straight back into it, in any browser.
+  * *make from public data*: the Python table generators, which build local calling and area code tables, with a button to install the packages they need.
+* **phones**
+  * *payphones*: every payphone, by its terminal ID. Name it, change its ID when it changes on the phone, set how often it calls in, see whether its last update went through, and save its tables as a configuration to apply to other phones. See [several payphones](#several-payphones-updates-and-call-ins).
+  * *records*: what payphones reported when they called in (calls, alarms, cash box counts, software versions), read from `mm_manager.db`. Save rows as CSV, or download the database.
+* **manager**
+  * *settings*: pick SIP or a serial modem (*find modems* scans the serial ports), fill in the number the payphone dials, and press *start mm_manager*. Its output scrolls by on the page. It keeps running when you close the page; the button at the top shows whether it is running. *Quit the control panel*, at the bottom, stops everything.
+  * *rom versions*: edits `config/control_rom_versions.csv` in place. mm_manager reads it when it starts.
+* **files**: the working folder (download, upload, delete, turn a `.dlog` transcript into a `.pcap`, move generated tables into `tables/`).
 
 The welcome screen, tour and help tab cover all of this.
 

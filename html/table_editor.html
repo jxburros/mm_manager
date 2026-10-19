@@ -373,6 +373,8 @@ legend { padding: 0; }
 .notice.ink { background: var(--ink); color: var(--paper); }
 .notice p:last-child { margin: 0; }
 .subtabs { display: flex; gap: 8px; margin: 24px 0 16px; flex-wrap: wrap; }
+.subnav { margin: -8px 0 24px; }
+.subnav .tab { min-height: 44px; padding: 0 18px; font-size: 15px; }
 
 /* ---- list editor ---- */
 .list-tools { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-bottom: 12px; }
@@ -681,12 +683,11 @@ dl.glossary dd { margin: 0; }
     <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab" role="tab" id="tab-tables" aria-controls="view-tables" aria-selected="true" data-view="tables">tables</button>
         <button class="tab" role="tab" id="tab-phones" aria-controls="view-phones" aria-selected="false" data-view="phones" hidden>phones</button>
-        <button class="tab" role="tab" id="tab-manager" aria-controls="view-manager" aria-selected="false" data-view="manager">manager settings</button>
-        <button class="tab" role="tab" id="tab-roms" aria-controls="view-roms" aria-selected="false" data-view="roms">rom versions</button>
-        <button class="tab" role="tab" id="tab-records" aria-controls="view-records" aria-selected="false" data-view="records" hidden>records</button>
-        <button class="tab" role="tab" id="tab-tools" aria-controls="view-tools" aria-selected="false" data-view="tools" hidden>tools</button>
+        <button class="tab" role="tab" id="tab-manager" aria-controls="view-manager" aria-selected="false" data-view="manager">manager</button>
+        <button class="tab" role="tab" id="tab-files" aria-controls="view-files" aria-selected="false" data-view="files" hidden>files</button>
         <button class="tab" role="tab" id="tab-help" aria-controls="view-help" aria-selected="false" data-view="help">help</button>
     </nav>
+    <nav class="subtabs subnav" id="subnav" role="tablist" aria-label="Pages in this section" hidden></nav>
 
     <main>
         <section id="view-tables" role="tabpanel" aria-labelledby="tab-tables">
@@ -712,11 +713,12 @@ dl.glossary dd { margin: 0; }
             </div>
         </section>
 
-        <section id="view-manager" role="tabpanel" aria-labelledby="tab-manager" hidden></section>
-        <section id="view-roms" role="tabpanel" aria-labelledby="tab-roms" hidden></section>
+        <section id="view-generate" role="tabpanel" aria-labelledby="tab-tables" hidden></section>
         <section id="view-phones" role="tabpanel" aria-labelledby="tab-phones" hidden></section>
-        <section id="view-records" role="tabpanel" aria-labelledby="tab-records" hidden></section>
-        <section id="view-tools" role="tabpanel" aria-labelledby="tab-tools" hidden></section>
+        <section id="view-records" role="tabpanel" aria-labelledby="tab-phones" hidden></section>
+        <section id="view-manager" role="tabpanel" aria-labelledby="tab-manager" hidden></section>
+        <section id="view-roms" role="tabpanel" aria-labelledby="tab-manager" hidden></section>
+        <section id="view-files" role="tabpanel" aria-labelledby="tab-files" hidden></section>
         <section id="view-help" role="tabpanel" aria-labelledby="tab-help" hidden></section>
     </main>
 
@@ -2800,13 +2802,15 @@ function renderManager() {
             out, warnList,
             h('div', { class: 'btns' }, copyBtn,
                 h('button', { class: 'btn link', type: 'button', onclick: () => { Object.assign(mgr, MGR_DEFAULTS); renderManager(); } }, 'reset'))),
+        server ? modemScanCard() : null,
         h('div', { class: 'card' },
             h('h3', null, 'Made fresh by mm_manager'),
             h('p', { class: 'section-note' }, 'These tables are built on every download rather than read from files, so the options on the left are how you change them.'),
             h('ul', { class: 'gen-list' }, GENERATED.map(([id, code, name, how]) => h('li', null,
                 h('div', null, h('span', { class: 'badge paper' }, `${hexId(id)} ${code}`), ' ', h('strong', null, name)),
                 h('div', { class: 'meta' }, how)))),
-            h('p', { class: 'meta', style: 'margin-top:12px' }, 'User interface parameters (0x1e) are built too, but only when there is no mm_table_1e.bin — make one under tables → new table.')));
+            h('p', { class: 'meta', style: 'margin-top:12px' }, 'User interface parameters (0x1e) are built too, but only when there is no mm_table_1e.bin — make one under tables → new table.')),
+        server ? panelCard() : null);
 
     form.prepend(tip(server
         ? 'Fill in the left side, then press start. mm_manager keeps running while this page is closed, until you stop it or quit the control panel.'
@@ -2905,7 +2909,7 @@ async function stopJob(name) {
 
 /* Run a task (lines as /api/run takes them) and resolve with the job once it ends. */
 async function runTask(lines, label) {
-    if (jobs.task.running) { toast('a tool is still running — wait for it, or stop it on the tools tab', 'error'); return null; }
+    if (jobs.task.running) { toast('a tool is still running — wait for it, or stop it under its output', 'error'); return null; }
     jobs.task.text = '';
     jobs.task.label = label;
     try { await api('/api/run?job=task', { method: 'POST', body: lines.join('\n') }); }
@@ -2942,6 +2946,30 @@ function runCard() {
     return card;
 }
 
+/* The modem scan's output, shown with the serial modem settings. */
+function modemScanCard() {
+    const card = logCard('task', 'modem scan', 'What "find modems" found on each serial port. Stop mm_manager first if it is using the modem.');
+    card.dataset.show = 'link=modem';
+    return card;
+}
+
+function panelCard() {
+    const info = server.info || {};
+    return h('div', { class: 'card' },
+        h('h3', null, 'the control panel'),
+        h('p', { class: 'meta' }, `mmumblephone ${info.version || ''} on ${info.platform || ''}`),
+        h('p', { class: 'meta', style: 'word-break:break-all' }, `programs: ${info.bindir || ''}`),
+        h('div', { class: 'btns', style: 'margin-top:12px' },
+            h('button', { class: 'btn danger', type: 'button', onclick: async () => {
+                if (!confirm('Quit the control panel? This also stops mm_manager.')) return;
+                try { await api('/api/quit', { method: 'POST' }); } catch (e) { /* it's going away */ }
+                clearTimeout(pollTimer);
+                document.body.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'empty' }, h('div', { class: 'bubble teal' },
+                    h('p', null, h('strong', null, 'the control panel has stopped.')),
+                    h('p', null, 'Start mm_gui again to come back. You can close this tab.')))));
+            } }, 'quit the control panel')));
+}
+
 function modemSummary() {
     if (!modems) return 'Scans the serial ports for a modem that answers AT commands.';
     if (!modems.length) return 'No modem answered. Check it is plugged in and nothing else is using it.';
@@ -2958,7 +2986,7 @@ async function findModems(after) {
     if (modems.length) {
         mgr.device = modems[0].path; mgr.baud = modems[0].baud; saveMgr();
         toast(`found ${modems.length === 1 ? 'a modem' : modems.length + ' modems'} — using ${modems[0].path} at ${modems[0].baud} bps`);
-    } else toast('no modem answered — the scan output is on the tools tab', 'error');
+    } else toast('no modem answered — see the modem scan output', 'error');
     if (after) after();
 }
 
@@ -3146,7 +3174,7 @@ function applyConfigDialog(config, preselect) {
         configSel ? h('div', { class: 'field' }, h('label', { class: 'flabel', for: configSel.id }, 'Configuration'), configSel) : null,
         h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'To these phones'), h('div', null, boxes.map(b => b.el))),
         h('label', { class: 'check' }, replace, 'replace: remove the phones\' other tables and call-in settings'),
-        h('p', { class: 'meta' }, 'Each phone gets every table again the next time it asks for tables, or, with "send updates when a payphone calls in" on (manager settings), at its next call-in.')),
+        h('p', { class: 'meta' }, 'Each phone gets every table again the next time it asks for tables, or, with "send updates when a payphone calls in" on (manager → settings), at its next call-in.')),
     'apply it', async () => {
         const c = config || phones.configs.find(x => x.name === configSel.value);
         const chosen = boxes.filter(b => b.cb.checked).map(b => b.p);
@@ -3236,7 +3264,7 @@ function phoneCard(p) {
                 h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Name'), nameIn))),
         h('div', { class: 'card' },
             h('h3', null, 'Calling in'),
-            h('p', { class: 'section-note' }, 'The payphone calls the manager on this schedule to report calls and alarms. With "send updates when a payphone calls in" on (manager settings), it also picks up changed tables then.'),
+            h('p', { class: 'section-note' }, 'The payphone calls the manager on this schedule to report calls and alarms. With "send updates when a payphone calls in" on (manager → settings), it also picks up changed tables then.'),
             h('div', { class: 'fields' },
                 h('div', { class: 'field' }, h('label', { class: 'flabel', for: callin.id }, 'Call in'), callin,
                     h('div', { class: 'fhint' }, 'Manager default: -I, or every 12 hours.')),
@@ -3380,7 +3408,7 @@ function renderRecords() {
 }
 
 /* =====================================================================
- * Tools (mm_gui only): files, modem scan, table generators, the panel
+ * Files and table generators (mm_gui only)
  * ===================================================================== */
 
 /* The table generators, and the arguments each takes (see the scripts themselves). */
@@ -3412,7 +3440,7 @@ const tools = { files: null, sub: '', gen: GENERATORS[0].script, genArgs: {} };
 async function loadFiles() {
     try { tools.files = (await api(`/api/list?dir=${enc(tools.sub)}&depth=0`)).entries; }
     catch (e) { tools.files = []; toast(`hmm, couldn't list the files: ${e.message}`, 'error'); }
-    if (state.view === 'tools') renderTools();
+    if (state.view === 'files') renderFiles();
 }
 
 const fmtSize = n => n < 1024 ? `${n} bytes` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
@@ -3467,7 +3495,7 @@ function filesCard() {
     const list = tools.files === null ? [h('p', { class: 'meta' }, 'loading…')] :
         tools.files.slice().sort((a, b) => (b.dir - a.dir) || a.path.localeCompare(b.path)).map(e => h('div', { class: 'file-row' },
             e.dir
-                ? h('button', { class: 'btn link nm', type: 'button', style: 'justify-content:flex-start;padding:0', onclick: () => { tools.sub = e.path; tools.files = null; renderTools(); } }, e.path.split('/').pop() + '/')
+                ? h('button', { class: 'btn link nm', type: 'button', style: 'justify-content:flex-start;padding:0', onclick: () => { tools.sub = e.path; tools.files = null; renderFiles(); } }, e.path.split('/').pop() + '/')
                 : h('span', { class: 'nm' }, e.path.split('/').pop()),
             h('span', { class: 'meta' }, e.dir ? 'folder' : `${fmtSize(e.size)} · ${new Date(e.mtime * 1000).toLocaleString()}`),
             e.dir ? null : h('span', { class: 'btns', style: 'gap:8px' }, fileActions(e))));
@@ -3475,7 +3503,7 @@ function filesCard() {
         h('h3', null, 'files'),
         h('p', { class: 'section-note' }, `The working folder, ${server.info ? server.info.root : ''}: tables, config, logs, captures and the database.`),
         h('div', { class: 'pager' }, crumbs.map((c, i) => h('button', { class: 'btn small link', type: 'button', onclick: () => {
-            tools.sub = crumbs.slice(1, i + 1).join('/'); tools.files = null; renderTools();
+            tools.sub = crumbs.slice(1, i + 1).join('/'); tools.files = null; renderFiles();
         } }, i ? c + '/' : 'working folder/'))),
         tools.files && !tools.files.length ? h('p', { class: 'meta' }, 'This folder is empty.') : null,
         ...list,
@@ -3498,7 +3526,7 @@ function generatorCard() {
     const g = GENERATORS.find(x => x.script === tools.gen);
     const vals = tools.genArgs[g.script] = tools.genArgs[g.script] || {};
     const sel = selectEl(ready.map(x => [x.script, x.title]), g.script, { id: uid() });
-    sel.addEventListener('change', () => { tools.gen = sel.value; renderTools(); });
+    sel.addEventListener('change', () => { tools.gen = sel.value; renderGenerate(); });
     const fields = g.args.map(([flag, label, example, required]) => {
         const id = uid();
         const inp = h('input', { id, class: 'in', placeholder: example ? `e.g. ${example}` : '', spellcheck: 'false', autocomplete: 'off' });
@@ -3516,13 +3544,14 @@ function generatorCard() {
         const j = await runTask(lines, g.title);
         if (!j) return;
         const made = [...j.text.matchAll(/(?:tables\/\d+\/)?mm_table_[0-9a-f]{2}\.bin/g)].length;
-        toast(j.exitCode === 0 && made ? 'done! the new tables are in the files list — move them into tables/' :
+        toast(j.exitCode === 0 && made ? 'done! the new tables are in the working folder — move them into tables/ on the files tab' :
             /No module named '([^']+)'/.test(j.text) ? 'Python is missing a package — press "install what they need"' :
             'finished — read the output to see how it went', j.exitCode === 0 && made ? 'ok' : 'info');
         loadFiles();
     };
     card.append(
-        h('p', { class: 'section-note' }, `Runs with ${info.python} in the working folder. New tables appear in the working folder, ready to move into tables/.`),
+        h('p', { class: 'section-note' }, `Runs with ${info.python} in the working folder. New tables appear in the working folder, ready to move into tables/ from `,
+            h('a', { href: '#', onclick: e => { e.preventDefault(); showView('files'); } }, 'files'), '.'),
         h('div', { class: 'fields' }, h('div', { class: 'field wide' }, h('label', { class: 'flabel', for: sel.id }, 'Generator'), sel)),
         h('p', { style: 'margin:12px 0' }, g.about, g.links ? [' Data: ', ...g.links.flatMap(([t, u], i) => [i ? ', ' : '', h('a', { href: u, target: '_blank', rel: 'noopener' }, t)]), '.'] : ''),
         fields.length ? h('div', { class: 'fields' }, fields) : null,
@@ -3535,38 +3564,24 @@ function generatorCard() {
     return card;
 }
 
-function renderTools() {
-    const host = $('#view-tools');
+function renderFiles() {
+    const host = $('#view-files');
     host.replaceChildren();
     if (tools.files === null && !tools.loading) { tools.loading = true; loadFiles().finally(() => { tools.loading = false; }); }
-    const info = server.info || {};
     const left = h('div', { class: 'sections' },
-        tip('Everything you would otherwise do in a terminal: look after files, scan for modems, and make tables from public data.'),
-        filesCard(),
+        tip('The working folder, where mm_manager runs: tables, config, logs, captures and the database.'),
+        filesCard());
+    const right = h('div', { class: 'side' }, logCard('task', 'tool output', null));
+    host.append(h('div', { class: 'two-col' }, left, right));
+}
+
+function renderGenerate() {
+    const host = $('#view-generate');
+    host.replaceChildren();
+    const left = h('div', { class: 'sections' },
+        tip('Local calling and area code tables are long and come from public data, so these scripts build them for you.'),
         generatorCard());
-    const right = h('div', { class: 'side' },
-        h('div', { class: 'card', 'data-tour': 'modems' },
-            h('h3', null, 'find modems'),
-            h('p', { class: 'section-note' }, 'For a real modem: checks each serial port for something that answers AT commands. Stop mm_manager first if it is using the modem.'),
-            h('p', null, modemSummary()),
-            modems && modems.length ? h('ul', { class: 'gen-list' }, modems.map(m => h('li', null, h('strong', null, m.path), ` at ${m.baud} bps`, m.ident ? h('div', { class: 'meta' }, m.ident) : null))) : null,
-            h('div', { class: 'btns' },
-                h('button', { class: 'btn primary', type: 'button', 'data-job-run': 'task', disabled: jobs.task.running, onclick: () => findModems(renderTools) }, 'scan now'),
-                modems && modems.length ? h('button', { class: 'btn link', type: 'button', onclick: () => showView('manager') }, 'see manager settings') : null)),
-        logCard('task', 'tool output', null),
-        h('div', { class: 'card' },
-            h('h3', null, 'the control panel'),
-            h('p', { class: 'meta' }, `mmumblephone ${info.version || ''} on ${info.platform || ''}`),
-            h('p', { class: 'meta', style: 'word-break:break-all' }, `programs: ${info.bindir || ''}`),
-            h('div', { class: 'btns', style: 'margin-top:12px' },
-                h('button', { class: 'btn danger', type: 'button', onclick: async () => {
-                    if (!confirm('Quit the control panel? This also stops mm_manager.')) return;
-                    try { await api('/api/quit', { method: 'POST' }); } catch (e) { /* it's going away */ }
-                    clearTimeout(pollTimer);
-                    document.body.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'empty' }, h('div', { class: 'bubble teal' },
-                        h('p', null, h('strong', null, 'the control panel has stopped.')),
-                        h('p', null, 'Start mm_gui again to come back. You can close this tab.')))));
-                } }, 'quit the control panel'))));
+    const right = h('div', { class: 'side' }, logCard('task', 'generator output', null));
     host.append(h('div', { class: 'two-col' }, left, right));
 }
 
@@ -3925,7 +3940,7 @@ function renderHelp() {
                 h('li', null, h('strong', null, 'Save. '), server
                     ? 'Save writes the file straight into the tables folder, in any browser.'
                     : 'In Chrome and Edge, save writes the file back in place. Other browsers download it; copy it into the same folder.'),
-                server ? h('li', null, h('strong', null, 'Start mm_manager. '), 'In ', h('a', { href: '#', onclick: e => { e.preventDefault(); showView('manager'); } }, 'manager settings'),
+                server ? h('li', null, h('strong', null, 'Start mm_manager. '), 'In ', h('a', { href: '#', onclick: e => { e.preventDefault(); showView('manager'); } }, 'manager → settings'),
                     ', fill in how the payphone calls in and the number it dials, then press ', h('em', null, 'start mm_manager'), '.') : null,
                 h('li', null, h('strong', null, 'Let the payphone pick it up. '), 'mm_manager sends tables when the terminal calls in for them. To get them sooner, use ',
                     h('em', null, 'force download'), ' in the payphone\'s craft menu. mm_manager then sends the tables that changed (all of them with ', h('code', null, '-c'), ').'))),
@@ -3934,16 +3949,18 @@ function renderHelp() {
                 h('p', null, 'This page is being served by ', h('code', null, 'mm_gui'), ', from the working folder ', h('code', null, server.info ? server.info.root : ''),
                     '. That folder holds ', h('code', null, 'tables/'), ', ', h('code', null, 'config/'), ' and ', h('code', null, 'mm_manager.db'), ', and mm_manager runs there.'),
                 h('ul', null,
-                    h('li', null, h('strong', null, 'manager settings: '), 'choose SIP or a serial modem, then ', h('em', null, 'start mm_manager'),
-                        '. Its output scrolls by underneath. It keeps running when you close the page; the button at the top of every tab shows its state and takes you back. To change a setting, stop it, change it, start it again.'),
-                    h('li', null, h('strong', null, 'phones: '), 'every payphone, by its terminal ID (the 10-digit number keyed in when it was set up; change it here when it changes on the phone). Name each one, set how often it calls in, see whether its last update went through, ',
-                        'and save one phone\'s tables as a named configuration to apply to others. A failed update is retried: the phone gets every table at its next call.'),
-                    h('li', null, h('strong', null, 'records: '), 'what payphones reported when they called in: calls, alarms, cash box counts, software versions. Save rows as CSV, or download the database.'),
-                    h('li', null, h('strong', null, 'rom versions: '), 'opens ', h('code', null, 'config/control_rom_versions.csv'), ' directly. mm_manager reads it when it starts, so restart it after a change.'),
-                    h('li', null, h('strong', null, 'tools: '), 'the files in the working folder (download, upload, delete, turn a ', h('code', null, '.dlog'), ' into a ', h('code', null, '.pcap'),
-                        ', move generated tables into ', h('code', null, 'tables/'), '), a scan for serial modems, and the table generators. The generators need Python 3, and ',
+                    h('li', null, h('strong', null, 'tables: '), h('em', null, 'edit tables'), ' opens and saves the files in ', h('code', null, 'tables/'), '. ',
+                        h('em', null, 'make from public data'), ' runs the table generators, which build local calling and area code tables. They need Python 3, and ',
                         h('em', null, 'install what they need'), ' fetches their packages.'),
-                    h('li', null, h('strong', null, 'quitting: '), h('em', null, 'quit the control panel'), ' on the tools tab, or close the mm_gui window. Either one stops mm_manager too.')),
+                    h('li', null, h('strong', null, 'phones: '), h('em', null, 'payphones'), ' lists every payphone by its terminal ID (the 10-digit number keyed in when it was set up; change it here when it changes on the phone). Name each one, set how often it calls in, see whether its last update went through, ',
+                        'and save one phone\'s tables as a named configuration to apply to others. A failed update is retried: the phone gets every table at its next call. ',
+                        h('em', null, 'records'), ' shows what payphones reported when they called in: calls, alarms, cash box counts, software versions. Save rows as CSV, or download the database.'),
+                    h('li', null, h('strong', null, 'manager: '), 'in ', h('em', null, 'settings'), ', choose SIP or a serial modem (', h('em', null, 'find modems'), ' scans the serial ports), then ', h('em', null, 'start mm_manager'),
+                        '. Its output scrolls by beside the settings. It keeps running when you close the page; the button at the top of every tab shows its state and takes you back. To change a setting, stop it, change it, start it again. ',
+                        h('em', null, 'rom versions'), ' opens ', h('code', null, 'config/control_rom_versions.csv'), ' directly. mm_manager reads it when it starts, so restart it after a change.'),
+                    h('li', null, h('strong', null, 'files: '), 'the working folder: download, upload, delete, turn a ', h('code', null, '.dlog'), ' into a ', h('code', null, '.pcap'),
+                        ', and move generated tables into ', h('code', null, 'tables/'), '.'),
+                    h('li', null, h('strong', null, 'quitting: '), h('em', null, 'quit the control panel'), ' at the bottom of manager → settings, or close the mm_gui window. Either one stops mm_manager too.')),
                 h('p', { class: 'meta' }, 'Only this computer can reach the control panel, and only this page can use it. The SIP password goes to mm_manager without being saved anywhere; type it again after a reload.'),
             ] : [
                 h('p', null, 'Opened straight from a file, this page edits tables and builds the mm_manager command for a terminal. To skip the terminal entirely, start ',
@@ -3951,9 +3968,9 @@ function renderHelp() {
                 h('ul', null,
                     h('li', null, 'tables open and save straight into mm_manager\'s folder, in any browser'),
                     h('li', null, 'a start button for mm_manager, with its output live on the page'),
-                    h('li', null, 'phones: several payphones, each with its own tables and call-in schedule, and saved configurations to share between them'),
-                    h('li', null, 'records: the calls, alarms and cash box counts payphones report'),
-                    h('li', null, 'tools: a modem scan, log and capture files, and the table generators')),
+                    h('li', null, 'table generators that build local calling and area code tables from public data'),
+                    h('li', null, 'phones: several payphones, each with its own tables and call-in schedule, saved configurations to share between them, and the calls, alarms and cash box counts they report'),
+                    h('li', null, 'a modem scan, and the working folder\'s log and capture files')),
             ]),
         section('where', 'where tables live',
             h('p', null, 'For each table, mm_manager uses the first file it finds in:'),
@@ -3963,7 +3980,7 @@ function renderHelp() {
                     ', ', h('code', null, 'coin'), ' or ', h('code', null, 'inmate')),
                 h('li', null, h('code', null, 'tables/default/'), ' — everything else')),
             h('p', null, 'So to give one payphone its own advertising messages, open its table and press ', h('em', null, 'copy for a terminal'),
-                '. The folders can be changed with ', h('code', null, '-t'), ' and ', h('code', null, '-d'), ' in manager settings.')),
+                '. The folders can be changed with ', h('code', null, '-t'), ' and ', h('code', null, '-d'), ' in manager → settings.')),
         section('firmware', 'tables for your phone',
             h('p', null, 'mm_manager sends a different set of tables to each firmware generation (MTR). It prints the terminal type and firmware when a payphone calls in. Coin-only phones skip the card tables; card-only and desk phones skip coin validation; ',
                 h('code', null, '-s'), ' sends only the required tables.'),
@@ -3984,7 +4001,7 @@ function renderHelp() {
             }))),
         section('generated', 'made by mm_manager',
             h('p', null, 'These tables are built on every download instead of being read from files, so you change them with command-line options in ',
-                h('a', { href: '#', onclick: e => { e.preventDefault(); showView('manager'); } }, 'manager settings'), '.'),
+                h('a', { href: '#', onclick: e => { e.preventDefault(); showView('manager'); } }, 'manager → settings'), '.'),
             h('ul', { class: 'gen-list' }, GENERATED.map(([id, code, name, how]) => h('li', null,
                 h('div', null, h('span', { class: 'badge paper' }, `${hexId(id)} ${code}`), ' ', h('strong', null, name)), h('div', { class: 'meta' }, how))))),
         section('safe', 'staying safe',
@@ -4024,8 +4041,8 @@ function showWelcome() {
         server
             ? h('ol', { class: 'steps compact' },
                 h('li', null, 'Your ', h('code', null, 'tables/'), ' folder is already open. Pick a table, change it and save: it is written straight back.'),
-                h('li', null, 'In ', h('em', null, 'manager settings'), ', say how the payphone calls in (SIP or a modem) and the number it dials, then press ', h('em', null, 'start mm_manager'), '.'),
-                h('li', null, 'Watch calls come in on ', h('em', null, 'manager settings'), ' and ', h('em', null, 'records'), '. ', h('em', null, 'tools'), ' has files, the modem scan and the table generators.'))
+                h('li', null, 'In ', h('em', null, 'manager'), ', say how the payphone calls in (SIP or a modem) and the number it dials, then press ', h('em', null, 'start mm_manager'), '.'),
+                h('li', null, 'Watch calls come in on ', h('em', null, 'manager'), ', and see each payphone and what it reported on ', h('em', null, 'phones'), '. ', h('em', null, 'files'), ' has the working folder.'))
             : h('ol', { class: 'steps compact' },
                 h('li', null, 'Open your ', h('code', null, 'tables/'), ' folder, or a few ', h('code', null, '.bin'), ' files.'),
                 h('li', null, 'Pick a table and change it with the form.'),
@@ -4115,7 +4132,7 @@ const TOUR_STEPS = [
     { target: () => q('.tabs .tab[data-view="manager"]'), title: 'starting mm_manager',
         body: server
             ? 'Some settings aren\'t in table files: they are how mm_manager itself runs. This is also where you start it.'
-            : 'Some settings aren\'t in table files: they are options on mm_manager\'s command line.', task: 'open "manager settings".',
+            : 'Some settings aren\'t in table files: they are options on mm_manager\'s command line.', task: 'open "manager".',
         check: () => state.view === 'manager', auto: true, doIt: () => showView('manager') },
     { before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-mgr="ncc1"]'), title: 'the number to call',
         body: 'The primary NCC number is what the payphone dials to reach this manager. mm_manager writes it into the terminal on every download. Your own settings come back when the tour ends.',
@@ -4125,18 +4142,19 @@ const TOUR_STEPS = [
         body: 'This updates as you type. Copy it and run it from the folder that holds mm_manager and tables/. Anything missing is listed under it. (Start mm_gui instead, and this page gets a start button.)' },
     { server: true, before: () => { if (state.view !== 'manager') showView('manager'); }, target: () => q('[data-tour="run"]'), title: 'start and stop',
         body: '"start mm_manager" runs it with these settings, and its output scrolls by here. It keeps running if you close this page; stop it here, or quit the control panel. The button at the top of every tab shows whether it is running. We won\'t start it now.' },
-    { server: true, target: () => q('.tabs .tab[data-view="records"]'), title: 'what the payphones said',
-        body: 'Each time a payphone calls in, mm_manager stores what it reports: calls, alarms, cash box counts, software versions.', task: 'open "records".',
+    { server: true, before: () => { if (!['phones', 'records'].includes(state.view)) showView('phones'); }, target: () => q('#subnav [data-view="records"]'),
+        title: 'what the payphones said',
+        body: 'The phones tab lists every payphone. Each time one calls in, mm_manager also stores what it reports: calls, alarms, cash box counts, software versions.', task: 'open "records".',
         check: () => state.view === 'records', auto: true, doIt: () => showView('records') },
     { server: true, before: () => { if (state.view !== 'records') showView('records'); }, target: () => q('#view-records .side'), title: 'records',
         body: 'Pick a kind of record to see it, newest first. You can save the rows as a CSV, or download the whole database.' },
-    { server: true, target: () => q('.tabs .tab[data-view="tools"]'), title: 'tools',
-        body: 'Everything else that used to need a terminal.', task: 'open "tools".',
-        check: () => state.view === 'tools', auto: true, doIt: () => showView('tools') },
-    { server: true, before: () => { if (state.view !== 'tools') showView('tools'); }, target: () => q('[data-tour="files"]'), title: 'files',
-        body: 'The working folder: download logs and captures, turn a .dlog transcript into a .pcap for Wireshark, upload data files, and move generated tables into tables/.' },
-    { server: true, before: () => { if (state.view !== 'tools') showView('tools'); }, target: () => q('[data-tour="modems"]') || q('[data-tour="generators"]'), title: 'modems and generators',
-        body: '"find modems" checks the serial ports for a real modem. Below the files, the generators make local calling and area code tables from public data (they need Python).' },
+    { server: true, target: () => q('.tabs .tab[data-view="files"]'), title: 'files',
+        body: 'Everything else in the working folder.', task: 'open "files".',
+        check: () => state.view === 'files', auto: true, doIt: () => showView('files') },
+    { server: true, before: () => { if (state.view !== 'files') showView('files'); }, target: () => q('[data-tour="files"]'), title: 'the working folder',
+        body: 'Download logs and captures, turn a .dlog transcript into a .pcap for Wireshark, upload data files, and move generated tables into tables/.' },
+    { server: true, before: () => { if (state.view !== 'generate') showView('generate'); }, target: () => q('[data-tour="generators"]'), title: 'make tables from public data',
+        body: 'Under tables, the generators make local calling and area code tables from public data (they need Python). What they make lands in the working folder.' },
     { target: () => q('.tabs .tab[data-view="help"]'), title: 'that\'s the tour!',
         body: 'The help tab has the full guide: which tables each firmware gets, what every table does, and a glossary. The dashed hints and table notes can be switched off with "hints" at the top.', last: true },
 ].filter(st => (server ? !st.local : !st.server));
@@ -4271,18 +4289,33 @@ function renderAll() {
     renderEditor();
 }
 
-const VIEWS = server ? ['tables', 'phones', 'manager', 'roms', 'records', 'tools', 'help'] : ['tables', 'manager', 'roms', 'help'];
+/* Each tab holds one or more pages; a tab with several shows them as a second row of tabs. A tab opens on its first page. */
+const GROUPS = [
+    ['tables', [['tables', 'edit tables'], ...(server ? [['generate', 'make from public data']] : [])]],
+    ...(server ? [['phones', [['phones', 'payphones'], ['records', 'records']]]] : []),
+    ['manager', [['manager', 'settings'], ['roms', 'rom versions']]],
+    ...(server ? [['files', [['files', 'working folder']]]] : []),
+    ['help', [['help', 'help']]],
+];
+const VIEWS = GROUPS.flatMap(([, pages]) => pages.map(([v]) => v));
 
 function showView(view) {
+    if (view === 'tools') view = 'files';   /* the old tools tab, as remembered from an earlier visit */
     if (!VIEWS.includes(view)) view = 'tables';
     state.view = view;
-    document.querySelectorAll('.tabs .tab').forEach(t => t.setAttribute('aria-selected', t.dataset.view === view ? 'true' : 'false'));
+    const [group, pages] = GROUPS.find(([, ps]) => ps.some(([v]) => v === view));
+    document.querySelectorAll('.tabs .tab').forEach(t => t.setAttribute('aria-selected', t.dataset.view === group ? 'true' : 'false'));
+    const sub = $('#subnav');
+    sub.hidden = pages.length < 2;
+    sub.replaceChildren(...(pages.length < 2 ? [] : pages.map(([v, label]) => h('button', { class: 'tab', type: 'button', role: 'tab', 'data-view': v,
+        'aria-controls': 'view-' + v, 'aria-selected': v === view ? 'true' : 'false', onclick: () => showView(v) }, label))));
     for (const v of VIEWS) $('#view-' + v).hidden = v !== view;
     if (view === 'manager') renderManager();
     if (view === 'roms') { if (server && !roms.rows.length && !roms.tried) { roms.tried = true; openRoms().then(renderRoms); } else renderRoms(); }
     if (view === 'phones') { phones.list = null; renderPhones(); }
     if (view === 'records') { records.tables = null; renderRecords(); }
-    if (view === 'tools') { tools.files = null; renderTools(); }
+    if (view === 'files') { tools.files = null; renderFiles(); }
+    if (view === 'generate') renderGenerate();
     if (view === 'help') renderHelp();
     safeStorage(s => s.setItem('mmTableEditor.view', view));
 }
@@ -4345,7 +4378,7 @@ function init() {
     if (!fsAccess) $('#open-folder-btn').title = 'This browser opens folders read-only; saving downloads the files.';
     renderAll();
     const view = safeStorage(s => s.getItem('mmTableEditor.view'), null);
-    showView(VIEWS.includes(view) ? view : 'tables');
+    showView(view || 'tables');
     if (!safeStorage(s => s.getItem('mmTableEditor.onboarded'), '1')) showWelcome();
     if (server) initServer();
 }
@@ -4355,8 +4388,7 @@ async function initServer() {
     document.title = 'mmumblephone control panel';
     $('.masthead .tagline').textContent = 'control panel · run the manager and tune what your payphone hears';
     $('#tab-phones').hidden = false;
-    $('#tab-records').hidden = false;
-    $('#tab-tools').hidden = false;
+    $('#tab-files').hidden = false;
     $('#run-pill').hidden = false;
     $('#run-pill').addEventListener('click', () => showView('manager'));
     $('#open-folder-btn').textContent = 'reload tables';
