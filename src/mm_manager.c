@@ -323,6 +323,11 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, signal_handler);
 #endif /* _WIN32 */
 
+    /* Under mm_gui, stdout is a pipe: don't hold output back in a buffer. */
+    if (getenv("MM_GUI") != NULL) {
+        setvbuf(stdout, NULL, _IONBF, 0);
+    }
+
     opterr = 0;
 
     if (argc < 2) {

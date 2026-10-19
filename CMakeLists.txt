@@ -162,6 +162,14 @@ TARGET_LINK_LIBRARIES(mm_manager mm_serial mm_util sqlite3 wsock32 ws2_32)
 else()
 TARGET_LINK_LIBRARIES(mm_manager mm_serial mm_util sqlite3 pthread dl m)
 endif()
+# Browser control panel: serves html/table_editor.html and runs mm_manager for it.
+add_executable (mm_gui "src/mm_gui.c" "src/mm_osal.c" "src/mm_osal.h")
+target_compile_definitions(mm_gui PRIVATE MM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+if(WIN32)
+TARGET_LINK_LIBRARIES(mm_gui sqlite3 ws2_32 shell32)
+else()
+TARGET_LINK_LIBRARIES(mm_gui sqlite3 pthread dl m)
+endif()
 add_executable (mm_admess "src/mm_admess.c" "src/mm_manager.h")
 TARGET_LINK_LIBRARIES(mm_admess mm_util)
 add_executable (mm_areacode "src/mm_areacode.c" "src/mm_manager.h")
@@ -269,18 +277,22 @@ set(INSTALL_TARGETS
     "mm_smcard"
     "mm_table_cutter"
     "mm_userif"
+    "mm_gui"
 )
 
 install(TARGETS ${INSTALL_TARGETS} DESTINATION bin)
 install(DIRECTORY wireshark DESTINATION .)
-install(DIRECTORY config DESTINATION share/mm_manager/config)
+install(DIRECTORY config DESTINATION share/mm_manager)
 install(DIRECTORY tables/default DESTINATION share/mm_manager/tables)
 install(DIRECTORY tables/card_only DESTINATION share/mm_manager/tables)
 install(DIRECTORY tables/coin DESTINATION share/mm_manager/tables)
 install(DIRECTORY tables/desk DESTINATION share/mm_manager/tables)
 install(FILES LICENSE DESTINATION .)
 install(FILES README.md DESTINATION .)
-install(FILES generate_intl_sbr.py generate_lcd.py generate_lcd_lata.py generate_lcd_lir.py generate_npa.py DESTINATION bin)
+install(FILES generate_advert_prompts.py generate_intl_sbr.py generate_lcd.py generate_lcd_lata.py generate_lcd_lir.py generate_npa.py mm_lcd.py DESTINATION bin)
+install(FILES html/table_editor.html DESTINATION share/mm_manager/html)
+# generate_intl_sbr.py reads icc_dial_codes.csv from the working folder.
+install(FILES icc_dial_codes.csv DESTINATION share/mm_manager)
 
 # --- CPack configuration ---
 
