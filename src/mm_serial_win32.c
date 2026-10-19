@@ -151,3 +151,25 @@ int platform_serial_get_modem_status(int fd) {
 
     return (dwModemStat & 0xFFFF);
 }
+
+int platform_list_serial_ports(char *paths, size_t path_len, int max_ports) {
+    int count = 0;
+
+    if ((paths == NULL) || (path_len < 16) || (max_ports <= 0)) {
+        return 0;
+    }
+
+    /* A COM port exists if it has a DOS device name; the \\.\ prefix is needed for COM10 and up. */
+    for (int n = 1; (n <= 256) && (count < max_ports); n++) {
+        char name[16];
+        char target[256];
+
+        snprintf(name, sizeof(name), "COM%d", n);
+        if (QueryDosDeviceA(name, target, sizeof(target)) != 0) {
+            snprintf(&paths[(size_t)count * path_len], path_len, "\\\\.\\%s", name);
+            count++;
+        }
+    }
+
+    return count;
+}

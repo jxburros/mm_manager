@@ -48,4 +48,11 @@ int        platform_flush_serial(int fd);
 int        platform_serial_set_dtr(int fd, int set);
 int        platform_serial_get_modem_status(int fd);
 
+/*
+ * Enumerate the serial ports present on this machine, as names that can be passed to
+ * platform_open_serial().  Fills paths[] (each entry is path_len bytes) with at most
+ * max_ports names, sorted, and returns how many were found.
+ */
+int        platform_list_serial_ports(char *paths, size_t path_len, int max_ports);
+
 #endif  /* MM_SERIAL_H_ */
