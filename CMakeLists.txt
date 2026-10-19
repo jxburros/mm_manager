@@ -309,7 +309,23 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 
 if(WIN32)
-  set(CPACK_GENERATOR "ZIP")
+  # A zip to unpack anywhere, and a setup.exe that installs to Program Files.
+  set(CPACK_GENERATOR "ZIP;NSIS")
+  set(CPACK_PACKAGE_INSTALL_DIRECTORY "mmumblephone")
+  set(CPACK_NSIS_PACKAGE_NAME "mmumblephone ${CPACK_PACKAGE_VERSION}")
+  set(CPACK_NSIS_DISPLAY_NAME "mmumblephone")
+  set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/jxburros/mm_manager")
+  set(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\mm_gui.exe")
+  set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+  # Start menu shortcut to the control panel (bin/mm_gui.exe).
+  set(CPACK_PACKAGE_EXECUTABLES "mm_gui" "mmumblephone control panel")
+  # And one on the desktop.
+  set(CPACK_NSIS_CREATE_ICONS_EXTRA
+      "CreateShortCut '$DESKTOP\\\\mmumblephone control panel.lnk' '$INSTDIR\\\\bin\\\\mm_gui.exe'")
+  set(CPACK_NSIS_DELETE_ICONS_EXTRA
+      "Delete '$DESKTOP\\\\mmumblephone control panel.lnk'")
+  # mm_gui keeps tables, config and mm_manager.db in Documents\\mmumblephone, so
+  # uninstalling or upgrading leaves them alone.
 else()
   set(CPACK_GENERATOR "TGZ")
 endif()
