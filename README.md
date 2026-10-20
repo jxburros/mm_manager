@@ -9,7 +9,6 @@
 >
 > For anything about mm_manager itself, please go to the [upstream project](https://github.com/hharte/mm_manager). Please report problems with the code this fork adds here, not upstream.
 
-
 ## What this fork adds
 
 The Millennium terminal calls its Manager with a 1200 bps Bell 212A modem. Upstream mm_manager answers that call with a physical modem on a second phone line. mmumblephone can instead register to a SIP server (Asterisk, FreePBX, a VoIP provider, etc.) as an extension or SIP number. When the payphone dials that number, mmumblephone answers the SIP call and runs a **software Bell 212A modem** on the call's G.711 audio. The rest of mm_manager sees an ordinary Hayes-style modem.
@@ -139,7 +138,6 @@ These are the same settings that make fax and modem calls work over VoIP:
 * UDP, IPv4, one call at a time. TLS/SRTP and SIP over TCP are not supported.
 * The Manager only answers calls, as in upstream mm_manager. The Manager never calls the payphone.
 
-
 ## Several payphones, updates and call-ins
 
 One mm_manager serves any number of payphones. It tells them apart by the **terminal ID**, the 10-digit number keyed into each payphone when it is installed (normally the payphone's own phone number), which the terminal sends with every message. Each payphone has its own folder, `tables/<terminal ID>/`:
@@ -187,7 +185,6 @@ mm_manager -S 1000:secret@pbx.example.com -n 1000 -I 120 -U
 
 In Chrome, Edge and other Chromium browsers, *save* writes straight back to the folder you opened. In other browsers, *save* downloads the file, and you copy it into place.
 
-
 ## Credits
 
 * **[mm_manager](https://github.com/hharte/mm_manager)**: Copyright (c) 2020-2025 Howard M. Harte, MIT License. mmumblephone is a fork of mm_manager, and everything except the SIP virtual modem is Howard's work. Thank you!
@@ -202,3 +199,10 @@ The executable is still named `mm_manager`, so that existing scripts and documen
 
 The full mm_manager documentation (overview, compatibility, installation and usage, terminal hardware and provisioning, configuration tables, utilities, the low-level protocol, debugging, known issues and references) is in its own file: **[mm_manager documentation](MM_MANAGER.md)**. It is the upstream documentation, lightly annotated where the SIP virtual modem changes things.
 
+## Unified release procedure
+
+`release.json` is the authoritative release manifest. Keep configured embedded versions synchronized and advance affected apps (patch by default) before merging changes into main. The first adoption establishes a baseline; later PRs must pass **Release version validation**.
+
+Use **Actions → Release → Run workflow** from **main**, choose stable or preview, and leave **dry_run** enabled first. Only apps ahead of their published version in their own namespace are selected. Build/test/sign all required packages before publishing. Tag pushes and merges no longer publish migrated apps automatically. After inspecting the dry run, dispatch with dry_run disabled and satisfy configured approvals. Published versions are never overwritten; use a new version for a correction.
+
+See [.release/README.md](.release/README.md) for this repository's inventory, credentials, compatibility, and validation limits. Shared implementation: [JX Holdings release infrastructure](https://github.com/JX-Holdings-LLC/release-infrastructure).

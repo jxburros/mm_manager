@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "bumpPolicy": "every-main-change",
+  "apps": {
+    "mm-manager": {
+      "tagPrefix": "v",
+      "paths": [
+        "**"
+      ],
+      "versionFiles": [
+        {
+          "path": "VERSION",
+          "format": "text",
+          "pattern": "^(?<version>[^\\r\\n]+)$"
+        }
+      ],
+      "notes": ".release/notes/{app}/{version}.md",
+      "assets": [
+        "mmumblephone-{version}-Darwin.tar.gz",
+        "mmumblephone-{version}-Linux.tar.gz",
+        "mmumblephone-{version}-win32.zip",
+        "mmumblephone-{version}-win32.exe",
+        "mmumblephone-{version}-win64.zip",
+        "mmumblephone-{version}-win64.exe"
+      ],
+      "security": "standard",
+      "checksumFile": "SHA256SUMS.txt",
+      "legacyLatest": true
+    }
+  }
+}

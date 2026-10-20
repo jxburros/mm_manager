@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "apps": {
+    "mm-manager": {
+      "title": "mmumblephone",
+      "version": "0.3.1"
+    }
+  }
+}
