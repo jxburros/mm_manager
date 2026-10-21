@@ -37,6 +37,7 @@ The design borrows from software fax over IP (spandsp, iaxmodem, t38modem):
 | `src/mm_detect.c` | Serial modem detection: enumerates serial ports and probes them with AT commands (`-D`, `-f auto`) |
 | `src/mm_gui.c` | Control panel: serves the table editor on `127.0.0.1` and lets it start and stop mm_manager, browse its database and run the tools, so no terminal is needed |
 | `html/table_editor.html` | Browser-based editor for the configuration tables, the mm_manager command line and the control ROM version list |
+| `mm_payphone.py`, `payphones/` | Other payphone families: the backend boundary, Protel configuration checks and ExpressNet export import, Elcotel R94/S94/P94 files, session captures, and the [compatibility matrix](docs/compatibility.md) |
 | `tests/` | Modem loopback tests (noise, echo, clock offset, A-law), an end-to-end SIP test and, on Linux, macOS and the BSDs, a modem detection test that uses pseudo-terminals (`ctest`) |
 
 ## The control panel: no terminal needed
@@ -184,6 +185,20 @@ mm_manager -S 1000:secret@pbx.example.com -n 1000 -I 120 -U
 * **Help and tour.** The first visit opens a short welcome. *Take the tour* walks you through the real controls on practice tables, waiting for you to do each step (or doing it for you). The *help* tab has the full guide: where mm_manager looks for tables, which tables each firmware version gets, what every table does, and a glossary. Each table also shows what it does and a few tips; turn these hints off with *hints* at the top.
 
 In Chrome, Edge and other Chromium browsers, *save* writes straight back to the folder you opened. In other browsers, *save* downloads the file, and you copy it into place.
+
+## Other payphones: Protel and Elcotel
+
+mmumblephone is growing towards a mixed collection, one family at a time. Each family has a backend that says exactly what it supports. For every board, the [compatibility matrix](docs/compatibility.md) gives inventory, file editing, communication, programming, reporting, call/coin operation and firmware updates as *planned*, *experimental* or *hardware verified*. `mm_payphone.py` (Python 3, nothing to install) runs the tools:
+
+* **Protel** ([details](docs/protel.md)): checks rate and option configurations against the ExpressNet manual, reads ExpressNet export files into the phone list, and explains ExpressNet's communication errors. **It cannot program or poll a Protel phone yet.** The protocol isn't public and hasn't been captured; [docs/protel.md](docs/protel.md) has what is known and the plan for a native backend.
+* **Elcotel Series 5** ([details](docs/elcotel.md)): reads, checks and writes R94 rate files, S94 speed dials and P94/P99 dialing patterns. Load them with the Elcotel software for now.
+* **Captures** for protocol research: `mm_payphone.py capture import` turns a serial transcript into a capture that records the board, firmware, connection, modem mode, call direction, the one setting changed and the outcome; `capture compare` shows where two captures differ.
+
+```
+python3 mm_payphone.py backends                 # what each backend supports
+python3 mm_payphone.py protel check myphone.json --firmware DD --model 7000
+python3 mm_payphone.py elcotel read RATES.R94 --json rates.json
+```
 
 ## Credits
 

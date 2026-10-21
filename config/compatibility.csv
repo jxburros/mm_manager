@@ -1,0 +1,46 @@
+# Compatibility matrix. One row per family, board, firmware and operation; every board lists all seven operations.
+# status: planned, experimental, hardware_verified (needs tested_setup) or not_applicable.
+# docs/compatibility.md is generated from this file: python3 mm_payphone.py matrix --write
+family,board,firmware,operation,status,tested_setup,limitations,evidence
+Nortel Millennium,Multi-Pay terminal,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),inventory,experimental,,"Phones are known by terminal ID, which can be changed or reused; the board revision, coin mechanism and power are not recorded yet",tables/<terminal ID>/phone.cfg and phone_status (README: several payphones)
+Nortel Millennium,Multi-Pay terminal,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),file_editing,hardware_verified,"Upstream mm_manager: Multi-Pay terminal, V1.0 Control PCP 1.20 and V1.1 Control PCP 2.11, physical Bell 212A modem",Other terminal types and firmware partly work (MM_MANAGER.md compatibility table); the browser table editor itself has software tests only,MM_MANAGER.md: Compatibility
+Nortel Millennium,Multi-Pay terminal,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),communication,hardware_verified,"Upstream mm_manager: as above, physical Bell 212A modem on a second line","The manager only answers; it never calls the terminal",MM_MANAGER.md: Compatibility
+Nortel Millennium,Multi-Pay terminal,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),programming,hardware_verified,"Upstream mm_manager: as above, physical Bell 212A modem","A download is complete when every table is acknowledged; tables are not read back. Picking up updates on call-in (-U) is tested against a simulated terminal only",MM_MANAGER.md: Compatibility; README: retries
+Nortel Millennium,Multi-Pay terminal,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),reporting,hardware_verified,"Upstream mm_manager: as above, physical Bell 212A modem",,MM_MANAGER.md: Compatibility
+Nortel Millennium,Multi-Pay terminal,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),call_coin,not_applicable,,Calls and coins are handled by the terminal on an ordinary line,
+Nortel Millennium,Multi-Pay terminal,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),firmware,not_applicable,,mm_manager does not change terminal firmware,
+Nortel Millennium,Multi-Pay terminal via SIP virtual modem,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),inventory,experimental,,As for the physical modem,tables/<terminal ID>/phone.cfg and phone_status
+Nortel Millennium,Multi-Pay terminal via SIP virtual modem,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),file_editing,experimental,,The same tables as with a physical modem,tests/test_sip_vmodem.c
+Nortel Millennium,Multi-Pay terminal via SIP virtual modem,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),communication,experimental,,"Not yet tested against a real terminal. Bell 212A only (no Bell 103), UDP/IPv4, one call at a time",tests/test_softmodem.c (spandsp V.22 interoperability; noise; echo; clock offset); tests/test_sip_vmodem.c
+Nortel Millennium,Multi-Pay terminal via SIP virtual modem,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),programming,experimental,,Not yet tested against a real terminal,tests/test_sip_vmodem.c
+Nortel Millennium,Multi-Pay terminal via SIP virtual modem,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),reporting,experimental,,Not yet tested against a real terminal,tests/test_sip_vmodem.c
+Nortel Millennium,Multi-Pay terminal via SIP virtual modem,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),call_coin,not_applicable,,Calls and coins are handled by the terminal,
+Nortel Millennium,Multi-Pay terminal via SIP virtual modem,1.20 (V1.0 Control PCP); 2.11 (V1.1 Control PCP),firmware,not_applicable,,mm_manager does not change terminal firmware,
+Protel,7000,CD/DD,inventory,experimental,,"Reads site records from ExpressNet exports (sites.imp): phone number, description, group, costing and options record names. Decoded from one ExpressNet 1.44 sample; only the first record",payphones/protel/xnet_import.py; tests/test_payphones.py
+Protel,7000,CD/DD,file_editing,experimental,,"mmumblephone's own JSON configuration (cost bands, area code/exchange bands, options), checked against the ExpressNet manual's limits. Not a format the phone or ExpressNet reads; option values are not encoded",payphones/protel/config.py; tests/test_payphones.py
+Protel,7000,CD/DD,communication,planned,,"Protocol not public and not yet captured. Phone-initiated sessions first. 300 bps Bell 103 works with ordinary modems; the 1200 bps Protel mode needs a Protel modem until characterised",docs/protel.md
+Protel,7000,CD/DD,programming,planned,,Depends on communication,docs/protel.md
+Protel,7000,CD/DD,reporting,planned,,"Flags, coin totals, call accounting and CDRs are documented as screens; their encoding is not known",docs/protel.md
+Protel,7000,CD/DD,call_coin,not_applicable,,Smart board: the phone rates and collects coins itself on an ordinary line,
+Protel,7000,CD/DD,firmware,planned,,"A later capability: ExpressNet downloads DD firmware to phones with a downloadable chip",docs/protel.md
+Protel,"1000, 2000, 4000, 8000",CA/DA; CD/DD; BC,inventory,experimental,,As for the 7000,payphones/protel/xnet_import.py; tests/test_payphones.py
+Protel,"1000, 2000, 4000, 8000",CA/DA; CD/DD; BC,file_editing,experimental,,As for the 7000; options are checked against the firmware group the manual gives,payphones/protel/config.py; tests/test_payphones.py
+Protel,"1000, 2000, 4000, 8000",CA/DA; CD/DD; BC,communication,planned,,Each board and firmware is to be tested on its own before reusing the 7000's results,docs/protel.md
+Protel,"1000, 2000, 4000, 8000",CA/DA; CD/DD; BC,programming,planned,,Depends on communication,docs/protel.md
+Protel,"1000, 2000, 4000, 8000",CA/DA; CD/DD; BC,reporting,planned,,Depends on communication,docs/protel.md
+Protel,"1000, 2000, 4000, 8000",CA/DA; CD/DD; BC,call_coin,not_applicable,,Smart boards,
+Protel,"1000, 2000, 4000, 8000",CA/DA; CD/DD; BC,firmware,planned,,,docs/protel.md
+Protel ProNet,"Elite, Ascension",,inventory,planned,,A separate family until captures show compatibility with ExpressNet boards,docs/protel.md
+Protel ProNet,"Elite, Ascension",,file_editing,planned,,,docs/protel.md
+Protel ProNet,"Elite, Ascension",,communication,planned,,The Elite guide specifies ProNet for computer communication,docs/protel.md
+Protel ProNet,"Elite, Ascension",,programming,planned,,,docs/protel.md
+Protel ProNet,"Elite, Ascension",,reporting,planned,,,docs/protel.md
+Protel ProNet,"Elite, Ascension",,call_coin,not_applicable,,Smart boards,
+Protel ProNet,"Elite, Ascension",,firmware,planned,,,docs/protel.md
+Elcotel,Series 5,,inventory,planned,,,
+Elcotel,Series 5,,file_editing,experimental,,"R94 rate files: reads, checks and writes back byte for byte (one public sample); NPA groups and NXX tables are kept raw. S94 and P94/P99: written from the published description, not yet checked against a real file. No Elcotel software or phone has loaded a file written here",payphones/elcotel; tests/test_payphones.py
+Elcotel,Series 5,,communication,planned,,A separate milestone after file support,docs/elcotel.md
+Elcotel,Series 5,,programming,planned,,Load the files with the Elcotel software for now,docs/elcotel.md
+Elcotel,Series 5,,reporting,planned,,,docs/elcotel.md
+Elcotel,Series 5,,call_coin,not_applicable,,Smart board,
+Elcotel,Series 5,,firmware,planned,,,docs/elcotel.md

@@ -261,6 +261,12 @@ endif()
 add_test(NAME softmodem COMMAND test_softmodem)
 add_test(NAME sip_vmodem COMMAND test_sip_vmodem)
 set_tests_properties(sip_vmodem PROPERTIES TIMEOUT 120)
+# Tests for the Protel and Elcotel backends and the compatibility matrix, if Python 3 is available.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+add_test(NAME payphones COMMAND Python3::Interpreter -m unittest tests/test_payphones.py
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
 
 # Install
 set(INSTALL_TARGETS
@@ -303,6 +309,10 @@ install(DIRECTORY tables/desk DESTINATION share/mm_manager/tables)
 install(FILES LICENSE DESTINATION .)
 install(FILES README.md MM_MANAGER.md DESTINATION .)
 install(FILES generate_advert_prompts.py generate_intl_sbr.py generate_lcd.py generate_lcd_lata.py generate_lcd_lir.py generate_npa.py mm_lcd.py DESTINATION bin)
+# mm_payphone.py: Protel and Elcotel tools and the compatibility matrix.
+install(FILES mm_payphone.py DESTINATION bin)
+install(DIRECTORY payphones DESTINATION bin FILES_MATCHING PATTERN "*.py" PATTERN "__pycache__" EXCLUDE)
+install(DIRECTORY docs DESTINATION .)
 install(FILES html/table_editor.html DESTINATION share/mm_manager/html)
 # generate_intl_sbr.py reads icc_dial_codes.csv from the working folder.
 install(FILES icc_dial_codes.csv DESTINATION share/mm_manager)

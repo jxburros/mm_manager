@@ -54,3 +54,4 @@ phone.cfg
 phone_status
 table_update.log
 update_pending
+__pycache__/
