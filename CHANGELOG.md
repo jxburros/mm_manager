@@ -1,5 +1,9 @@
 # Changelog
 
+### 0.5.1: releases publish again
+
+- The release workflow now uses the shared release toolkit at d7f42f9. The earlier pin looked up its new draft release by tag, which GitHub doesn't answer for drafts, so publishing stopped with "Not Found" (the 0.4.0 release run). The new toolkit also puts the notes of every unpublished version (0.4.0, 0.5.0, 0.5.1) into the release.
+
 ### 0.5.0: control panel accounts
 
 - Optional accounts in the control panel (`mm_gui`), under global → accounts. With none, nothing changes. Once an admin account exists, everyone signs in. Admins can use everything; a user only gets the phones an admin assigns, and on each only the parts ticked: overview, records and each group of settings. mm_gui enforces this on every request.

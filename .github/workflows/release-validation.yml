@@ -10,6 +10,6 @@ permissions:
   contents: read
 jobs:
   versions:
-    uses: JX-Holdings-LLC/release-infrastructure/.github/workflows/validate.yml@181636b602317ba703c3f4bf12775c34560f4efb
+    uses: JX-Holdings-LLC/release-infrastructure/.github/workflows/validate.yml@d7f42f9910c075ef34915fa2b95cf28dd2be534a
     with:
-      toolkit-ref: 181636b602317ba703c3f4bf12775c34560f4efb
+      toolkit-ref: d7f42f9910c075ef34915fa2b95cf28dd2be534a
