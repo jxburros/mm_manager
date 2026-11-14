@@ -176,7 +176,7 @@ else()
 TARGET_LINK_LIBRARIES(mm_manager mm_serial mm_util sqlite3 pthread dl m)
 endif()
 # Browser control panel: serves html/table_editor.html and runs mm_manager for it.
-add_executable (mm_gui "src/mm_gui.c" "src/mm_osal.c" "src/mm_osal.h")
+add_executable (mm_gui "src/mm_gui.c" "src/mm_osal.c" "src/mm_osal.h" "src/mm_sha256.c" "src/mm_sha256.h")
 target_compile_definitions(mm_gui PRIVATE MM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 if(WIN32)
 TARGET_LINK_LIBRARIES(mm_gui sqlite3 ws2_32 shell32)
@@ -258,6 +258,9 @@ TARGET_LINK_LIBRARIES(test_detect pthread)
 add_test(NAME detect COMMAND test_detect)
 set_tests_properties(detect PROPERTIES TIMEOUT 60)
 endif()
+# Password hashing for the control panel's accounts.
+add_executable (test_sha256 "tests/test_sha256.c" "src/mm_sha256.c" "src/mm_sha256.h")
+add_test(NAME sha256 COMMAND test_sha256)
 add_test(NAME softmodem COMMAND test_softmodem)
 add_test(NAME sip_vmodem COMMAND test_sip_vmodem)
 set_tests_properties(sip_vmodem PROPERTIES TIMEOUT 120)
@@ -266,6 +269,10 @@ find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
 add_test(NAME payphones COMMAND Python3::Interpreter -m unittest tests/test_payphones.py
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+# The control panel's accounts: sign-in, and what admins and users may do.
+add_test(NAME gui_accounts COMMAND Python3::Interpreter -m unittest tests/test_gui_accounts.py
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(gui_accounts PROPERTIES ENVIRONMENT "MM_GUI=$<TARGET_FILE:mm_gui>" TIMEOUT 120)
 endif()
 
 # Install

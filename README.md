@@ -35,7 +35,8 @@ The design borrows from software fax over IP (spandsp, iaxmodem, t38modem):
 | `src/mm_vmodem.c` | Virtual modem: AT command emulation, auto-answer, 20 ms media clock, glue between SIP and the soft modem |
 | `src/mm_osal.c` | Small sockets/threads/time portability layer (Linux, macOS, Windows) |
 | `src/mm_detect.c` | Serial modem detection: enumerates serial ports and probes them with AT commands (`-D`, `-f auto`) |
-| `src/mm_gui.c` | Control panel: serves the table editor on `127.0.0.1` and lets it start and stop mm_manager, browse its database and run the tools, so no terminal is needed |
+| `src/mm_gui.c` | Control panel: serves the table editor on `127.0.0.1` and lets it start and stop mm_manager, browse its database and run the tools, so no terminal is needed. Optional accounts: admins, and users limited to the phones and settings an admin gives them |
+| `src/mm_sha256.c` | SHA-256 and PBKDF2, for the control panel's account passwords |
 | `html/table_editor.html` | Browser-based editor for the configuration tables, the mm_manager command line and the control ROM version list |
 | `mm_payphone.py`, `payphones/` | Other payphone families: the backend boundary, Protel configuration checks and ExpressNet export import, Elcotel R94/S94/P94 files, session captures, and the [compatibility matrix](docs/compatibility.md) |
 | `tests/` | Modem loopback tests (noise, echo, clock offset, A-law), an end-to-end SIP test and, on Linux, macOS and the BSDs, a modem detection test that uses pseudo-terminals (`ctest`) |
@@ -56,6 +57,8 @@ A rail on the left has four places:
 * **manager**: start and stop mm_manager and watch its output, and the records from every phone, read from `mm_manager.db`. It keeps running when you close the page; the button at the top shows whether it is running.
 * **help**: the guide.
 
+With [accounts](#accounts-admins-and-users) on, a user only gets **phones** (just the ones given to them) and **help**.
+
 The welcome screen, tour and help tab cover all of this.
 
 `mm_gui` finds its files by itself: the working folder (the one with `tables/` and `config/`, where mm_manager runs and keeps `mm_manager.db`) is the current folder, `../share/mm_manager` in a release, or the source checkout. If that folder can't be written to, as when installed in Program Files, `mm_gui` works in `Documents\mmumblephone` (`~/mmumblephone` on macOS and Linux) instead, starting from a copy of the installed tables and config. Uninstalling or upgrading leaves that folder alone. mm_manager and the other tools must be next to `mm_gui`. Options:
@@ -65,9 +68,21 @@ The welcome screen, tour and help tab cover all of this.
 | `-p <port>` | 8273 | Local port. If it is busy, the next free one is used. |
 | `-w <folder>` | found automatically | Working folder |
 | `-H <file>` | found automatically | The `table_editor.html` to serve |
+| `-L <address>` | | Also answer other computers on this IPv4 address of this computer (`0.0.0.0` for all of them). Needs accounts; see [accounts](#accounts-admins-and-users). |
 | `-n` | | Don't open a browser |
 
-The control panel only listens on `127.0.0.1`. Each API request must carry a random token that is put in the page when it is served, and must be addressed to `127.0.0.1` or `localhost`, so other web sites can't use it. It only runs mm_manager, the `mm_*` tools next to it and the `generate_*.py` scripts, and only reads and writes files inside the working folder. The SIP password is passed to mm_manager in `MM_SIP_PASSWORD` and isn't saved. On Windows, *stop* ends mm_manager at once, rather than with ^C.
+The control panel only listens on `127.0.0.1` unless it is started with `-L`. Each API request must carry a random token that is put in the page when it is served, and must be addressed to `127.0.0.1` or `localhost`, so other web sites can't use it. It only runs mm_manager, the `mm_*` tools next to it and the `generate_*.py` scripts, and only reads and writes files inside the working folder. The SIP password is passed to mm_manager in `MM_SIP_PASSWORD` and isn't saved. On Windows, *stop* ends mm_manager at once, rather than with ^C.
+
+### Accounts: admins and users
+
+With no accounts, the control panel works as above: anyone at the computer it runs on can use all of it. To share it, add accounts under **global → accounts**. The first account must be an admin; once it is saved, everyone signs in.
+
+* An **admin** can use everything, and manages the accounts.
+* A **user** sees only the phones an admin gave them. For each phone, the admin ticks what the user may do there: its *overview* (name, call-in schedule, sending every table at the next call), its *records*, and each group of settings (display & messages, features & hours, prices, numbers, local & long distance, cards & carriers, coins & cash box, advanced). A user's change to a shared setting gives that phone its own copy, as for an admin; the shared versions themselves, mm_manager's options, starting and stopping mm_manager, saved configurations, the other phones and their records are admin-only. Adding, removing or renumbering phones is too, and a phone keeps its users when an admin changes its terminal ID.
+
+`mm_gui` checks every request against the account that sent it, not only what the page shows. Accounts are kept in `.mm_gui/accounts` in the working folder, with each password stored as a salted PBKDF2-SHA-256 hash; the file can't be read or written through the control panel's file API. Sign-ins last until the browser tab is closed, the user signs out, or 8 hours pass without using it; restarting `mm_gui` signs everyone out. Five wrong passwords in a row lock that account for 30 seconds or more. The only admin can't be deleted or made a user. If every admin password is lost, stop `mm_gui` and delete `.mm_gui/accounts`: that turns accounts off again.
+
+To let other computers sign in, start `mm_gui -L 0.0.0.0` (or one of this computer's addresses) and open `http://<this computer>:8273/` there. Until there is an admin account, other computers are refused. **The connection is plain HTTP**: passwords and settings cross the network unencrypted. Only do this on a network you trust, or reach the computer through a VPN or an SSH tunnel (`ssh -L 8273:127.0.0.1:8273 <computer>`, then open `http://127.0.0.1:8273/`, works without `-L`).
 
 ## Using the SIP virtual modem
 
