@@ -784,6 +784,7 @@ dl.glossary dd { margin: 0; }
         <div class="spacer"></div>
         <div class="btns">
             <button class="btn small" id="run-pill" type="button" hidden>manager: stopped</button>
+            <button class="btn small" id="account-btn" type="button" hidden title="Your account: sign out or change your password"></button>
             <button class="btn small" id="tour-btn" type="button">take the tour</button>
             <button class="btn small" id="hints-btn" type="button" aria-pressed="true">hints: on</button>
             <button class="btn small" id="theme-btn" type="button" aria-label="Colour theme">theme: auto</button>
@@ -1852,26 +1853,55 @@ const fsAccess = 'showDirectoryPicker' in window;
  */
 const server = (() => {
     const m = document.querySelector('meta[name="mm-gui-token"]');
-    return m ? { token: m.content, info: null } : null;
+    /*
+     * accounts: whether mm_gui asks everyone to sign in. me: who is signed in (null with
+     * no accounts: then whoever is at this computer can do everything). The session lives
+     * in sessionStorage, so it lasts until this tab is closed.
+     */
+    return m ? { token: m.content, info: null, accounts: false, me: null, phonesDir: 'tables', local: true,
+        session: (() => { try { return sessionStorage.getItem('mmTableEditor.session') || ''; } catch (e) { return ''; } })() } : null;
 })();
 const enc = encodeURIComponent;
 
+function setSession(token) {
+    server.session = token || '';
+    try { token ? sessionStorage.setItem('mmTableEditor.session', token) : sessionStorage.removeItem('mmTableEditor.session'); } catch (e) { /* private window */ }
+}
+
 async function api(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
     let r;
-    try { r = await fetch(path, { method, body, headers: { 'X-MM-Token': server.token, ...headers }, cache: 'no-store' }); }
+    const auth = server.session ? { 'X-MM-Session': server.session } : {};
+    try { r = await fetch(path, { method, body, headers: { 'X-MM-Token': server.token, ...auth, ...headers }, cache: 'no-store' }); }
     catch (e) { throw new Error('the control panel isn\'t answering. Is mm_gui still running?'); }
+    if (r.status === 401 && server.me && !path.startsWith('/api/login') && !path.startsWith('/api/password')) signedOut();
     if (raw && r.ok) return new Uint8Array(await r.arrayBuffer());
     let j;
     try { j = await r.json(); } catch (e) { j = { ok: false, error: `HTTP ${r.status}` }; }
     if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`);
     return j;
 }
+
+/*
+ * Accounts. An admin (or anyone, with no accounts) can do everything. A user only gets
+ * the phones an admin gave them and, on each, only the parts ticked: the overview,
+ * the records and each group of settings (SETTING_GROUPS). mm_gui checks all of this
+ * itself; the page just leaves out what the user can't use.
+ */
+const isAdmin = () => !server || !server.me || server.me.admin;
+const PERMS = [['overview', 'Overview: name, call-in schedule, waiting update'], ['records', 'Records it reported']];
+function may(id, perm) {
+    if (isAdmin() || id === PRACTICE_ID) return true;
+    const g = server.me.phones.find(p => p.id === id);
+    return !!g && g.perms.includes(perm);
+}
+/* The sections every one of these phones lets this account use. */
+const mayAll = (ids, perm) => ids.every(id => may(id, perm));
 const serverRead = path => api('/api/file?path=' + enc(path), { raw: true });
 const serverWrite = (path, data) => api('/api/file?path=' + enc(path), { method: 'PUT', body: data });
 const serverPathOk = p => !!p && !/^[\\/]|:|(^|[\\/])\.|[\\/]$/.test(p);
 
 /* Where mm_manager looks for tables: -t, or tables/. */
-const tablesBase = () => (serverPathOk(mgr.termDir) ? mgr.termDir.replace(/\\/g, '/') : 'tables');
+const tablesBase = () => (!isAdmin() ? server.phonesDir : serverPathOk(mgr.termDir) ? mgr.termDir.replace(/\\/g, '/') : 'tables');
 
 /* A table file. "exists" is false until it has been saved once. */
 function makeFile({ path, data, handle = null, dir = null, isNew = false }) {
@@ -3580,8 +3610,9 @@ function phoneCards(p) {
             h('div', { class: 'fields' },
                 h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Terminal ID'),
                     h('div', { class: 'btns' }, h('strong', { class: 'mono' }, fmtTerm(p.id)),
-                        h('button', { class: 'btn small', type: 'button', onclick: () => renamePhoneDialog(p) }, 'change…')),
-                    h('div', { class: 'fhint' }, 'Set on the payphone during install. Change it here too if it changes there.')),
+                        isAdmin() ? h('button', { class: 'btn small', type: 'button', onclick: () => renamePhoneDialog(p) }, 'change…') : null),
+                    h('div', { class: 'fhint' }, isAdmin() ? 'Set on the payphone during install. Change it here too if it changes there.'
+                        : 'Set on the payphone during install. An admin changes it here if it changes there.')),
                 h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Name'), nameIn,
                     h('div', { class: 'fhint' }, 'Only for you: it is shown here instead of the number. Saved with "save settings" below.')),
                 row('Model', type))),
@@ -3604,13 +3635,13 @@ function phoneCards(p) {
             p.pending ? h('p', { class: 'notice' }, 'Every table goes to this phone the next time it calls in (with "send updates when a payphone calls in" on) or asks for tables. mm_manager sets this itself when an update fails, so it is retried.') : null,
             h('div', { class: 'btns', style: 'margin-top:1rem' },
                 h('button', { class: 'btn', type: 'button', onclick: togglePending }, p.pending ? 'cancel the waiting update' : 'send every table at the next call'))),
-        h('div', { class: 'card' },
+        !isAdmin() ? null : h('div', { class: 'card' },
             h('h3', null, 'Saved configurations'),
             h('p', { class: 'section-note' }, `${p.tables.length ? `This phone has ${p.tables.length} table${p.tables.length === 1 ? '' : 's'} of its own.` : 'This phone has no tables of its own yet.'} Save them and its call-in settings under a name to reuse on other phones, or apply one saved earlier.${p.cfg.configuration ? ` Last applied: ${p.cfg.configuration}.` : ''}`),
             h('div', { class: 'btns' },
                 h('button', { class: 'btn', type: 'button', onclick: () => saveConfigDialog(p) }, 'save as a configuration…'),
                 h('button', { class: 'btn', type: 'button', disabled: !phones.configs.length, onclick: () => applyConfigDialog(null, p.id) }, 'apply a configuration…'))),
-        h('div', { class: 'card' },
+        !isAdmin() ? null : h('div', { class: 'card' },
             h('div', { class: 'btns' }, h('button', { class: 'btn danger', type: 'button', onclick: () => removePhone(p) }, 'remove this phone'),
                 h('span', { class: 'meta' }, 'Deletes its folder. Its records stay in the database.'))),
     ];
@@ -3660,7 +3691,7 @@ function renderRecords() {
                 h('span', { class: 'desc' }, t.name))))),
         h('div', { class: 'btns', style: 'margin-top:0.75rem' },
             h('button', { class: 'btn small', type: 'button', onclick: loadRecords }, 'refresh'),
-            records.tables.length ? h('button', { class: 'btn small link', type: 'button', onclick: async () => {
+            records.tables.length && isAdmin() ? h('button', { class: 'btn small link', type: 'button', onclick: async () => {
                 try { download('mm_manager.db', await serverRead('mm_manager.db')); } catch (e) { toast(e.message, 'error'); }
             } }, 'download the database') : null));
 
@@ -4251,8 +4282,12 @@ function renderHelp() {
                     ? ['start and stop mm_manager and watch its output, and read the records from every phone. It keeps running when you close the page; the button at the top shows its state. To change a setting, stop it, change it under global, start it again.']
                     : ['the command line that starts mm_manager with your settings. Start ', h('code', null, 'mm_gui'), ' instead to get a start button, phone status and records.']),
                 h('li', null, h('strong', null, 'help: '), 'this page.')),
-            server ? h('p', { class: 'meta' }, 'This page is served by ', h('code', null, 'mm_gui'), ' from ', h('code', null, server.info ? server.info.root : ''),
-                '. Only this computer can reach it, and only this page can use it. The SIP password goes to mm_manager without being saved anywhere; type it again after a reload.') : null),
+            server ? h('p', null, h('strong', null, 'accounts: '), 'with none, anyone at this computer can use everything. An admin can add accounts under ',
+                isAdmin() ? helpLink('global → accounts', () => showView('global', 'accounts')) : h('em', null, 'global → accounts'),
+                ': then everyone signs in (your name is at the top, with sign out and change password). Admins can use everything. A user sees only the phones an admin gave them, and on each only what the admin ticked: its overview, its records, and each group of settings. Settings shared by every phone, mm_manager itself and the other global pages stay with admins.') : null,
+            server ? h('p', { class: 'meta' }, 'This page is served by ', h('code', null, 'mm_gui'), server.info && server.info.root ? [' from ', h('code', null, server.info.root)] : '',
+                server.accounts ? '. Everyone signs in, and mm_gui checks what each account may change.' : '. Only this computer can reach it, and only this page can use it.',
+                ' The SIP password goes to mm_manager without being saved anywhere; type it again after a reload.') : null),
         section('where', 'shared and own settings',
             h('p', null, 'For each table, mm_manager sends a phone the first file it finds in:'),
             h('ol', null,
@@ -4572,12 +4607,15 @@ const saveNav = () => safeStorage(s => s.setItem('mmTableEditor.nav', JSON.strin
 /* The page being shown: its scope (for source badges) and what to do after an edit. */
 const page = { scope: null, onEdit: null };
 
-const PHONE_SECTIONS = id => [['overview', 'overview'], ...SETTING_GROUPS.map(g => [g.key, g.title]), ...(server && id !== PRACTICE_ID ? [['records', 'records']] : [])];
+const PHONE_SECTIONS = id => [['overview', 'overview'], ...SETTING_GROUPS.map(g => [g.key, g.title]), ...(server && id !== PRACTICE_ID ? [['records', 'records']] : [])]
+    .filter(([key]) => may(id, key));
+/* The rail buttons this account can use: a user only has their phones and help. */
+const viewsAllowed = () => isAdmin() ? VIEWS : ['phones', 'help'];
 const GLOBAL_SECTIONS = () => [
     ['for every phone', SETTING_GROUPS.map(g => ['shared:' + g.key, g.title])],
     ['mm_manager', [['connection', 'connection'], ['numbers', 'numbers & codes'], ['callin', 'calling in & updates'],
         ['sending', 'sending tables'], ['logs', 'logs & debugging'], ['roms', 'rom versions']]],
-    ['this control panel', [...(server ? [['configurations', 'saved configurations'], ['generate', 'make tables from public data'],
+    ['this control panel', [...(server ? [['accounts', 'accounts'], ['configurations', 'saved configurations'], ['generate', 'make tables from public data'],
         ['files', 'working folder']] : []), ['tablefiles', 'table files'], ...(server ? [['panel', 'about & quit']] : [])]],
 ];
 const MANAGER_SECTIONS = () => server ? [['run', 'run mm_manager'], ['records', 'records from all phones']] : [['run', 'command line']];
@@ -4597,6 +4635,8 @@ function renderView() {
     const host = $('#shell-main');
     park();
     host.replaceChildren();
+    if (server && server.accounts && !server.me) { renderSignIn(host); return; }
+    if (!viewsAllowed().includes(nav.view)) nav.view = 'phones';
     page.scope = null; page.onEdit = null;
     state.edCtx = null;
     document.querySelectorAll('.rail .rail-btn').forEach(b => b.setAttribute('aria-selected', b.dataset.view === nav.view ? 'true' : 'false'));
@@ -4609,7 +4649,7 @@ function renderView() {
 }
 
 function showView(view, section) {
-    if (!VIEWS.includes(view)) view = 'phones';
+    if (!viewsAllowed().includes(view)) view = 'phones';
     nav.view = view;
     if (section) {
         if (view === 'phones') nav.phoneSection = section;
@@ -4675,8 +4715,7 @@ function phonesPanel() {
                     : h('button', { class: 'btn small primary', type: 'button', disabled: n < 2, onclick: () => { nav.bulk = true; renderView(); } },
                         n < 2 ? 'tick one more to edit together' : `edit ${n} together`),
                 h('button', { class: 'btn small link', type: 'button', onclick: () => { nav.checked.clear(); nav.bulk = false; renderView(); } }, 'clear'))));
-        if (nav.bulk) card.append(sectionTree([['callin', 'calling in & updates'], ...SETTING_GROUPS.map(g => [g.key, g.title])], nav.bulkSection,
-            key => { nav.bulkSection = key; renderView(); }));
+        if (nav.bulk) card.append(sectionTree(bulkSections([...nav.checked]), nav.bulkSection, key => { nav.bulkSection = key; renderView(); }));
     }
     const list = h('ul', { class: 'tree', 'data-tour': 'phone-list' });
     for (const id of ids) {
@@ -4688,10 +4727,10 @@ function phonesPanel() {
             open ? sectionTree(PHONE_SECTIONS(id), nav.phoneSection, key => { nav.phoneSection = key; renderView(); }) : null));
     }
     if (!ids.length) list.append(h('li', null, h('p', { class: 'meta', style: 'margin:0.5rem 0.25rem' }, server
-        ? 'No phones yet. They appear by themselves after they first call in, or add one now.'
+        ? !isAdmin() ? 'No phones have been given to your account yet. Ask an admin.' : 'No phones yet. They appear by themselves after they first call in, or add one now.'
         : state.root ? 'No phone folders in this tables/ folder yet.' : 'Open your tables/ folder to see your phones.')));
     card.append(list, h('div', { class: 'btns', style: 'margin-top:0.75rem' },
-        server ? h('button', { class: 'btn small', type: 'button', onclick: addPhoneDialog }, 'add a phone')
+        server ? (isAdmin() ? h('button', { class: 'btn small', type: 'button', onclick: addPhoneDialog }, 'add a phone') : null)
             : state.root ? h('button', { class: 'btn small', type: 'button', onclick: addLocalPhoneDialog }, 'add a phone')
             : h('button', { class: 'btn small primary', type: 'button', onclick: openFolder }, 'open tables/ folder'),
         server ? h('button', { class: 'btn small link', type: 'button', onclick: refreshAfterPhoneChange }, 'refresh') : null,
@@ -4713,7 +4752,9 @@ function renderPhonesView(host) {
     if (nav.bulk) { renderBulk(main); return; }
     const id = phones.current;
     if (!id) { main.append(noPhones()); return; }
-    if (!PHONE_SECTIONS(id).some(([k]) => k === nav.phoneSection)) nav.phoneSection = 'overview';
+    const sections = PHONE_SECTIONS(id);
+    if (!sections.length) { main.append(h('div', { class: 'card' }, h('p', null, 'Your account can\'t change anything on this phone. Ask an admin.'))); return; }
+    if (!sections.some(([k]) => k === nav.phoneSection)) nav.phoneSection = sections[0][0];
     const scope = phoneScope(id);
     const p = phoneRecord(id);
     main.append(h('div', { class: 'page-head' },
@@ -4734,6 +4775,14 @@ function renderPhonesView(host) {
 }
 
 function noPhones() {
+    if (!isAdmin()) {
+        return h('div', { class: 'empty' }, h('div', { class: 'bubble teal' },
+            h('p', null, h('strong', null, 'no phones for you yet.')),
+            h('p', null, 'An admin chooses which payphones your account can look after, and what you can change on each. Ask one to add some, then press ',
+                h('em', null, 'refresh'), '.')),
+            h('div', { class: 'btns', style: 'margin-bottom:1.5rem' }, h('button', { class: 'btn', type: 'button', onclick: refreshMe }, 'refresh')),
+            h('div', { html: BOOTH_SVG }));
+    }
     return h('div', { class: 'empty' },
         h('div', { class: 'bubble teal' },
             h('p', null, h('strong', null, 'no phones yet.')),
@@ -4754,7 +4803,7 @@ function noPhones() {
 
 /* A phone's settings, group by group: how many it has of its own, and how many it shares. */
 function settingsSummary(scope, sectionKey) {
-    return h('div', { class: 'summary-grid' }, SETTING_GROUPS.map(g => {
+    return h('div', { class: 'summary-grid' }, SETTING_GROUPS.filter(g => scope.kind !== 'phone' || may(scope.id, g.key)).map(g => {
         const ids = scopeTables(scope, g);
         const own = ids.filter(id => { const f = resolve(scope, id); return f && f.folder === scope.folder; }).length;
         const missing = ids.filter(id => !resolve(scope, id)).length;
@@ -4773,7 +4822,7 @@ function phoneOverview(id, scope) {
             h('div', { class: 'btns' }, h('button', { class: 'btn', type: 'button', onclick: removePractice }, 'remove the practice phone'))));
     } else if (server) {
         const p = phoneRecord(id);
-        if (p) box.append(...phoneCards(p));
+        if (p) box.append(...phoneCards(p).filter(Boolean));
     } else {
         box.append(tip('Start the control panel (mm_gui) to set how often each phone calls in, see whether its updates went through, and read what it reported.'));
     }
@@ -4821,7 +4870,7 @@ function renderGroupPage(host, scope, g, key) {
         host.append(h('div', { class: 'card' }, h('h2', null, DEFS[id] ? DEFS[id].name : `table ${hexId(id)}`),
             h('p', null, `${fw ? fw[0] : 'This firmware'} takes this table, but there's no file for it in ${scope.chain.map(c => c + '/').join(', ')}, so mm_manager can't send it.`),
             canAdd ? h('div', { class: 'btns' },
-                h('button', { class: 'btn primary', type: 'button', onclick: async () => { const nf = await createIn(sharedScope('default'), id); if (nf) renderAll(); } }, 'make one for all phones'),
+                isAdmin() ? h('button', { class: 'btn primary', type: 'button', onclick: async () => { const nf = await createIn(sharedScope('default'), id); if (nf) renderAll(); } }, 'make one for all phones') : null,
                 h('button', { class: 'btn', type: 'button', onclick: async () => { const nf = await createIn(scope, id); if (nf) renderAll(); } }, 'make one for this phone only')) : null));
         return;
     }
@@ -4867,7 +4916,7 @@ function scopeNoteBody(f) {
         return h('div', { class: 'notice row' }, h('p', null, isDirty(f)
             ? `Changed for ${scope.kind === 'phone' ? 'this phone' : modelLabel(scope.folder)} only. Save to keep it; the others keep the version for ${shared}.`
             : `Shared with ${shared}. Change anything here and ${scope.kind === 'phone' ? 'this phone' : modelLabel(scope.folder)} gets its own copy; the others keep theirs.`),
-            h('div', { class: 'btns' }, h('button', { class: 'btn small link', type: 'button', onclick: () => openShared(f.tableId, base.folder) }, `edit it for ${shared} instead`)));
+            isAdmin() ? h('div', { class: 'btns' }, h('button', { class: 'btn small link', type: 'button', onclick: () => openShared(f.tableId, base.folder) }, `edit it for ${shared} instead`)) : null);
     }
     if (scope.kind === 'phone') {
         return h('div', { class: 'notice row' }, h('p', null, 'This phone\'s own version: other phones don\'t get these changes.'),
@@ -4884,8 +4933,15 @@ function scopeNoteBody(f) {
 
 const bulk = { tpl: null, tplKey: '', base: null };
 
+/* What several phones can be changed together in: only what the account may change on every one of them. */
+const bulkSections = ids => [['callin', 'calling in & updates'], ...SETTING_GROUPS.map(g => [g.key, g.title])]
+    .filter(([key]) => mayAll(ids, key === 'callin' ? 'overview' : key));
+
 function renderBulk(main) {
     const ids = [...nav.checked];
+    const sections = bulkSections(ids);
+    if (!sections.length) { main.append(h('div', { class: 'card' }, h('p', null, 'Your account can\'t change the same things on all of these phones.'))); return; }
+    if (!sections.some(([k]) => k === nav.bulkSection)) nav.bulkSection = sections[0][0];
     main.append(h('div', { class: 'page-head' }, h('h1', null, `${ids.length} phones together`),
         ...ids.slice(0, 8).map(id => h('span', { class: 'badge paper' }, phoneName(id))), ids.length > 8 ? h('span', { class: 'meta' }, `+${ids.length - 8} more`) : null));
     if (nav.bulkSection === 'callin') { main.append(bulkCallin(ids)); return; }
@@ -5031,6 +5087,274 @@ function bulkCallin(ids) {
 
 /* ---- global ---- */
 
+/* =====================================================================
+ * Accounts (mm_gui only): signing in, and who may do what
+ * ===================================================================== */
+
+/* Everything a user can be given on a phone, in the order the admin sees them. */
+const ALL_PERMS = () => [...PERMS, ...SETTING_GROUPS.map(g => [g.key, g.title])];
+const accounts = { list: null, error: '' };
+
+function renderSignIn(host) {
+    const nameIn = h('input', { class: 'in', id: uid(), autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false' });
+    const passIn = h('input', { class: 'in', id: uid(), type: 'password', autocomplete: 'current-password' });
+    const msg = h('div', { class: 'fhint', role: 'alert' });
+    const go = h('button', { class: 'btn primary', type: 'submit' }, 'sign in');
+    const form = h('form', { class: 'card', style: 'max-width:26rem;margin:2rem auto' },
+        h('h2', null, 'sign in'),
+        h('p', { class: 'section-note' }, 'This control panel has accounts. Sign in with the name and password an admin gave you.'),
+        h('div', { class: 'fields', style: 'grid-template-columns:minmax(0,1fr)' },
+            h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Name'), nameIn),
+            h('div', { class: 'field' }, h('label', { class: 'flabel', for: passIn.id }, 'Password'), passIn)),
+        msg, h('div', { class: 'btns', style: 'margin-top:1rem' }, go));
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        go.disabled = true;
+        try {
+            const r = await api('/api/login', { method: 'POST', body: `${nameIn.value.trim()}\n${passIn.value}` });
+            setSession(r.session);
+            server.me = r.user;
+            await startSignedIn();
+        } catch (err) {
+            msg.textContent = err.message; msg.style.color = 'var(--pink-ink)';
+            passIn.value = ''; passIn.focus();
+        } finally { go.disabled = false; }
+    });
+    host.append(form);
+    setTimeout(() => nameIn.focus(), 0);
+}
+
+/* The session ended (signed out elsewhere, or idle too long): back to the sign-in form. */
+function signedOut(quiet = false) {
+    if (!server.me) return;
+    server.me = null;
+    setSession('');
+    clearTimeout(pollTimer);
+    applyRole();
+    state.files = state.files.filter(f => f.practice); phones.list = null; phones.configs = null; accounts.list = null;
+    renderAll();
+    if (!quiet) toast('you\'ve been signed out: sign in again to carry on', 'info');
+}
+
+async function signOut() {
+    if (state.files.some(f => !f.practice && isDirty(f)) && !confirm('You have unsaved table changes. Sign out anyway?')) return;
+    try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* signed out anyway */ }
+    server.me = { ...server.me };   /* so signedOut() runs */
+    signedOut(true);
+}
+
+/* Read this account again (an admin may have given it more phones), then the phones. */
+async function refreshMe() {
+    try {
+        const r = await api('/api/session');
+        Object.assign(server, { accounts: r.accounts, me: r.user, phonesDir: r.phonesDir });
+    } catch (e) { toast(e.message, 'error'); return; }
+    applyRole();
+    await refreshAfterPhoneChange();
+}
+
+/* Show only what this account can use: the rail, the manager button, the tour. */
+function applyRole() {
+    const admin = isAdmin();
+    const signedIn = !server || !server.accounts || !!server.me;
+    document.querySelectorAll('.rail .rail-btn').forEach(b => { b.hidden = !signedIn || !viewsAllowed().includes(b.dataset.view); });
+    if (server) $('#run-pill').hidden = !admin || !signedIn;
+    $('#tour-btn').hidden = !admin || !signedIn;
+    const acct = $('#account-btn');
+    acct.hidden = !(server && server.me);
+    if (server && server.me) acct.textContent = `${server.me.name}${server.me.admin ? ' · admin' : ''}`;
+    if (server) {
+        $('#footer-note').textContent = !server.accounts ? 'The control panel (mm_gui) only answers this computer. Files are only written when you press save.'
+            : 'Everyone signs in to this control panel. Files are only written when you press save.';
+    }
+}
+
+function accountMenu() {
+    const cur = h('input', { class: 'in', id: uid(), type: 'password', autocomplete: 'current-password' });
+    const next = h('input', { class: 'in', id: uid(), type: 'password', autocomplete: 'new-password' });
+    const again = h('input', { class: 'in', id: uid(), type: 'password', autocomplete: 'new-password' });
+    const me = server.me;
+    const n = me.phones.length;
+    openDialog(`signed in as ${me.name}`, h('div', { class: 'fields' },
+        h('p', { class: 'meta' }, me.admin ? 'An admin: you can use everything, and manage the accounts under global → accounts.'
+            : `You look after ${n} phone${n === 1 ? '' : 's'}.`),
+        h('div', { class: 'btns', style: 'justify-content:flex-start;margin-top:0' },
+            h('button', { class: 'btn', type: 'button', onclick: () => { $('#dialog').close(); signOut(); } }, 'sign out')),
+        h('h3', null, 'change your password'),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: cur.id }, 'Current password'), cur),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: next.id }, 'New password'), next,
+            h('div', { class: 'fhint' }, 'At least 8 characters. Your other sign-ins end.')),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: again.id }, 'New password again'), again)),
+    'change password', async () => {
+        if (next.value.length < 8) return 'The new password needs at least 8 characters.';
+        if (next.value !== again.value) return 'The new passwords don\'t match.';
+        try { await api('/api/password', { method: 'POST', body: `${cur.value}\n${next.value}` }); }
+        catch (e) { return e.message; }
+        toast('password changed');
+        return null;
+    });
+}
+
+async function loadAccounts() {
+    try {
+        const r = await api('/api/accounts');
+        accounts.list = r.accounts; accounts.error = '';
+        server.phonesDir = r.phonesDir;
+    } catch (e) { accounts.list = accounts.list || []; accounts.error = e.message; }
+    if (nav.view === 'global' && nav.global === 'accounts') renderView();
+}
+
+/* Tell mm_gui where the phone folders are (global → sending tables → table folder), so it can check users' changes. */
+async function syncPhonesDir() {
+    if (!server || !server.accounts || !isAdmin() || server.phonesDir === tablesBase()) return;
+    try {
+        await api(`/api/accounts/settings?phones_dir=${enc(tablesBase())}`, { method: 'POST' });
+        server.phonesDir = tablesBase();
+    } catch (e) { toast(`hmm, couldn't tell mm_gui where the phone folders are: ${e.message}`, 'error'); }
+}
+
+function permSummary(a) {
+    if (a.admin) return 'every phone, and everything else';
+    if (!a.phones.length) return 'no phones yet';
+    const all = ALL_PERMS().length;
+    return a.phones.map(g => `${phoneName(g.id)}${g.perms.length === all ? '' : ` (${g.perms.length} of ${all})`}`).join(', ');
+}
+
+function accountsPage() {
+    const box = h('div', { class: 'sections' });
+    if (!server.accounts) {
+        box.append(tip('Right now anyone at this computer can use all of the control panel, and other computers can\'t reach it.'),
+            h('div', { class: 'card' },
+                h('h3', null, 'turn on accounts'),
+                h('p', null, 'Add an admin account first: from then on, everyone signs in. Admins can use everything. ',
+                    'Users only see the phones you give them, and only the settings you tick for each.'),
+                h('p', { class: 'meta' }, 'Forgot every admin password? Stop mm_gui and delete .mm_gui/accounts in the working folder: that turns accounts off again.'),
+                h('div', { class: 'btns', style: 'margin-top:0.75rem' },
+                    h('button', { class: 'btn primary', type: 'button', onclick: () => accountDialog(null, true) }, 'add the first admin…'))));
+        return box;
+    }
+    if (accounts.list === null) { box.append(h('p', { class: 'meta' }, 'loading…')); loadAccounts(); return box; }
+    if (accounts.error) box.append(h('p', { class: 'notice' }, `hmm, couldn't read the accounts: ${accounts.error}`));
+    box.append(tip('Admins can use everything. A user sees only the phones you give them, and on each only the parts you tick. mm_gui itself checks every change, not only this page.'));
+    for (const a of accounts.list) {
+        box.append(h('div', { class: 'card' },
+            h('h3', null, a.name, ' ', h('span', { class: `badge ${a.admin ? 'pink' : 'paper'}` }, a.admin ? 'admin' : 'user'),
+                server.me && a.name === server.me.name ? h('span', { class: 'meta' }, ' (you)') : null),
+            h('p', { class: 'meta' }, permSummary(a)),
+            h('div', { class: 'btns', style: 'margin-top:0.75rem' },
+                h('button', { class: 'btn', type: 'button', onclick: () => accountDialog(a) }, 'change…'),
+                h('button', { class: 'btn link', type: 'button', onclick: () => removeAccount(a) }, 'delete'))));
+    }
+    box.append(h('div', { class: 'btns' }, h('button', { class: 'btn primary', type: 'button', onclick: () => accountDialog(null) }, 'add an account…')),
+        h('div', { class: 'card' },
+            h('h3', null, 'from other computers'),
+            h('p', null, 'Start mm_gui with ', h('code', null, '-L 0.0.0.0'), ' (or one of this computer\'s addresses) and others on your network can sign in at ',
+                h('code', null, `http://<this computer>:${location.port || 80}/`), '.'),
+            h('p', { class: 'meta' }, 'The connection isn\'t encrypted, so passwords and settings cross the network as they are. Only do it on a network you trust, or over a VPN.')));
+    return box;
+}
+
+/* Add (a == null) or change an account: its role, password, and phones with what may be done on each. */
+function accountDialog(a, first = false) {
+    const isNew = !a;
+    const nameIn = h('input', { class: 'in', id: uid(), value: a ? a.name : '', disabled: !isNew, autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false' });
+    const role = selectEl([['admin', 'admin: can use everything'], ['user', 'user: only the phones below']], a ? (a.admin ? 'admin' : 'user') : first ? 'admin' : 'user', { id: uid(), disabled: first });
+    const pass = h('input', { class: 'in', id: uid(), type: 'password', autocomplete: 'new-password' });
+    const again = h('input', { class: 'in', id: uid(), type: 'password', autocomplete: 'new-password' });
+    const perms = ALL_PERMS();
+    const given = new Map((a ? a.phones : []).map(g => [g.id, new Set(g.perms)]));
+    const ids = [...new Set([...(phones.list || []).map(p => p.id), ...given.keys()])].sort();
+    const rows = ids.map(id => {
+        const has = given.get(id);
+        const on = h('input', { type: 'checkbox', checked: !!has });
+        const boxes = perms.map(([key, label]) => {
+            const cb = h('input', { type: 'checkbox', checked: has ? has.has(key) : true });
+            return { key, cb, el: h('label', { class: 'check' }, cb, label) };
+        });
+        const detail = h('div', { class: 'chips', style: 'margin:0.25rem 0 0.75rem 2rem' },
+            h('button', { class: 'btn small link', type: 'button', onclick: () => { const all = boxes.every(b => b.cb.checked); boxes.forEach(b => { b.cb.checked = !all; }); } }, 'all / none'),
+            boxes.map(b => b.el));
+        const sync = () => { detail.hidden = !on.checked; };
+        on.addEventListener('change', sync);
+        sync();
+        const known = (phones.list || []).some(p => p.id === id);
+        return { id, on, boxes, el: h('div', null, h('label', { class: 'check' }, on, h('strong', null, phoneName(id)),
+            h('span', { class: 'meta' }, known ? fmtTerm(id) : `${fmtTerm(id)} · no folder now`)), detail) };
+    });
+    const phoneField = h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Phones this user looks after'),
+        rows.length ? h('div', null, rows.map(r => r.el)) : h('p', { class: 'meta' }, 'There are no phones yet. Add them on the phones page, then come back.'),
+        h('div', { class: 'fhint' }, 'Tick a phone, then what they may do there. "Overview" is its name, call-in schedule and sending every table at the next call. Settings shared by every phone stay for admins: a user\'s change makes that phone its own copy.'));
+    const syncRole = () => { phoneField.hidden = role.value === 'admin'; };
+    role.addEventListener('change', syncRole);
+    syncRole();
+    openDialog(isNew ? (first ? 'add the first admin' : 'add an account') : `change ${a.name}`, h('div', { class: 'fields' },
+        first ? h('p', { class: 'meta' }, 'Once this account is saved, everyone signs in, and you are signed in as this admin.') : null,
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: nameIn.id }, 'Name'), nameIn,
+            isNew ? h('div', { class: 'fhint' }, 'Letters, digits, ".", "_", "-" or "@". It can\'t be changed later.') : null),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: role.id }, 'Role'), role),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: pass.id }, isNew ? 'Password' : 'New password (leave empty to keep it)'), pass,
+            h('div', { class: 'fhint' }, 'At least 8 characters.')),
+        h('div', { class: 'field' }, h('label', { class: 'flabel', for: again.id }, 'Password again'), again),
+        phoneField),
+    isNew ? 'add it' : 'save', async () => {
+        const name = nameIn.value.trim();
+        if (!/^[A-Za-z0-9_@][A-Za-z0-9._@-]{0,31}$/.test(name)) return 'A name is 1 to 32 letters, digits, ".", "_", "-" or "@".';
+        if ((isNew || pass.value) && pass.value.length < 8) return 'The password needs at least 8 characters.';
+        if (pass.value !== again.value) return 'The passwords don\'t match.';
+        const lines = [`name=${name}`, `role=${role.value}`];
+        if (pass.value) lines.push(`password=${pass.value}`);
+        if (role.value === 'user') {
+            for (const r of rows.filter(r => r.on.checked)) {
+                const chosen = r.boxes.filter(b => b.cb.checked).map(b => b.key);
+                if (!chosen.length) return `Tick at least one thing for ${phoneName(r.id)}, or untick the phone.`;
+                lines.push(`phone=${r.id} ${chosen.join(',')}`);
+            }
+        }
+        let r;
+        try { r = await api('/api/accounts/save', { method: 'POST', body: lines.join('\n') }); }
+        catch (e) { return e.message; }
+        if (first) {
+            setSession(r.session);
+            Object.assign(server, { accounts: true, me: r.user });
+            await syncPhonesDir();
+            applyRole();
+            toast(`accounts are on: you're signed in as ${name}`);
+        } else {
+            if (server.me && server.me.name === name) server.me = r.user;
+            toast(isNew ? `added ${name}` : `saved ${name}`);
+            applyRole();
+        }
+        accounts.list = null;
+        renderView();
+        return null;
+    });
+}
+
+async function removeAccount(a) {
+    if (!confirm(`Delete the account ${a.name}? ${a.name} is signed out straight away.`)) return;
+    try { await api(`/api/accounts/delete?name=${enc(a.name)}`, { method: 'POST' }); }
+    catch (e) { toast(e.message, 'error'); return; }
+    toast(`deleted ${a.name}`);
+    if (server.me && server.me.name === a.name) { server.me = { ...server.me }; signedOut(); return; }
+    accounts.list = null;
+    renderView();
+}
+
+/* Signed in (or no accounts): load what this account can see. */
+async function startSignedIn() {
+    applyRole();
+    if (!viewsAllowed().includes(nav.view)) nav.view = 'phones';
+    renderAll();
+    try { server.info = await api('/api/info'); }
+    catch (e) { toast(e.message, 'error'); }
+    if (isAdmin() && server.info && !server.info.manager) toast(`mm_manager isn't next to mm_gui in ${server.info.bindir}, so it can't be started from here`, 'error');
+    await syncPhonesDir();
+    if (!state.files.some(f => !f.practice)) await openServerTables(true);
+    if (isAdmin()) pollLoop();
+    await loadPhones();
+    if (isAdmin() && !safeStorage(s => s.getItem('mmTableEditor.onboarded'), '1')) showWelcome();
+}
+
 function renderGlobalView(host) {
     const sections = GLOBAL_SECTIONS();
     if (!sections.some(([, items]) => items.some(([k]) => k === nav.global))) nav.global = 'shared:display';
@@ -5060,6 +5384,7 @@ function renderGlobalView(host) {
         if (server && !roms.rows.length && !roms.tried) { roms.tried = true; openRoms().then(renderRoms); } else renderRoms();
         return;
     }
+    if (sec === 'accounts') { main.append(accountsPage()); return; }
     if (sec === 'configurations') { main.append(configurationsPage()); return; }
     if (sec === 'generate') { main.append(h('div', { id: 'view-generate' })); renderGenerate(); return; }
     if (sec === 'files') { tools.files = null; main.append(h('div', { id: 'view-files' })); renderFiles(); return; }
@@ -5228,9 +5553,9 @@ function init() {
 
     if (!fsAccess) $('#open-folder-btn').title = 'This browser opens folders read-only; saving downloads the files.';
     renderSidebar();
+    if (server) { initServer(); return; }
     showView(VIEWS.includes(nav.view) ? nav.view : 'phones');
     if (!safeStorage(s => s.getItem('mmTableEditor.onboarded'), '1')) showWelcome();
-    if (server) initServer();
 }
 
 /* Served by mm_gui: open tables/, read the phones, and keep an eye on mm_manager. */
@@ -5241,13 +5566,13 @@ async function initServer() {
     $('#run-pill').addEventListener('click', () => showView('manager', 'run'));
     $('#open-folder-btn').textContent = 'reload tables';
     $('#open-folder-btn').title = 'Read the tables in mm_manager\'s tables/ folder again';
-    $('#footer-note').textContent = 'The control panel (mm_gui) only answers this computer. Files are only written when you press save.';
-    try { server.info = await api('/api/info'); }
-    catch (e) { toast(e.message, 'error'); }
-    if (server.info && !server.info.manager) toast(`mm_manager isn't next to mm_gui in ${server.info.bindir}, so it can't be started from here`, 'error');
-    if (!state.files.some(f => !f.practice)) await openServerTables(true);
-    pollLoop();
-    await loadPhones();
+    $('#account-btn').addEventListener('click', accountMenu);
+    try {
+        const r = await api('/api/session');
+        Object.assign(server, { accounts: r.accounts, me: r.user, phonesDir: r.phonesDir, local: r.local });
+    } catch (e) { toast(e.message, 'error'); }
+    if (server.accounts && !server.me) { setSession(''); applyRole(); renderAll(); return; }
+    await startSignedIn();
 }
 
 init();

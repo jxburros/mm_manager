@@ -12,6 +12,10 @@
  * Host header must name 127.0.0.1 or localhost, so other web sites can't drive
  * the API from the browser.
  *
+ * Optionally, there are accounts (see "Accounts" below): once an admin account
+ * exists, everyone signs in, users only reach the phones and settings an admin
+ * gave them, and -L lets other computers sign in too.
+ *
  * Part of mmumblephone, a fork of mm_manager by Howard M. Harte
  * (www.github.com/hharte/mm_manager).
  *
@@ -31,10 +35,12 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <time.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
 #include "mm_osal.h"
+#include "mm_sha256.h"
 #include "sqlite3.h"
 
 #ifdef _WIN32
@@ -394,8 +400,10 @@ static int write_file(const char *path, const char *data, size_t len) {
     return fclose(f);
 }
 
-/* List a folder as JSON, descending up to depth levels. */
-static void list_dir(sbuf_t *out, const char *rel, int depth, int *count) {
+/* List a folder as JSON, descending up to depth levels.  keep(ctx, path), if given, picks the entries to show. */
+typedef int (*keep_fn)(const void *ctx, const char *path);
+
+static void list_dir(sbuf_t *out, const char *rel, int depth, int *count, keep_fn keep, const void *ctx) {
     char path[PATH_LEN];
 
     snprintf(path, sizeof(path), "%s", rel[0] ? rel : ".");
@@ -421,12 +429,15 @@ static void list_dir(sbuf_t *out, const char *rel, int depth, int *count) {
                 continue;
             }
             join_path(child, sizeof(child), rel, fd.cFileName);
+            if (keep && !keep(ctx, child)) {
+                continue;
+            }
             sb_puts(out, (*count)++ ? ",{\"path\":" : "{\"path\":");
             sb_jstr(out, child);
             sb_printf(out, ",\"dir\":%s,\"size\":%llu,\"mtime\":%lld}", dir ? "true" : "false",
                       (unsigned long long)size, (long long)mtime);
             if (dir && depth > 0) {
-                list_dir(out, child, depth - 1, count);
+                list_dir(out, child, depth - 1, count, keep, ctx);
             }
         } while (FindNextFileA(h, &fd));
         FindClose(h);
@@ -448,7 +459,7 @@ static void list_dir(sbuf_t *out, const char *rel, int depth, int *count) {
                 continue;
             }
             join_path(child, sizeof(child), rel, e->d_name);
-            if (do_stat(child, &st) != 0) {
+            if ((keep && !keep(ctx, child)) || do_stat(child, &st) != 0) {
                 continue;
             }
             dir = S_ISDIR_(st.st_mode);
@@ -457,7 +468,7 @@ static void list_dir(sbuf_t *out, const char *rel, int depth, int *count) {
             sb_printf(out, ",\"dir\":%s,\"size\":%llu,\"mtime\":%lld}", dir ? "true" : "false",
                       (unsigned long long)st.st_size, (long long)st.st_mtime);
             if (dir && depth > 0) {
-                list_dir(out, child, depth - 1, count);
+                list_dir(out, child, depth - 1, count, keep, ctx);
             }
         }
         closedir(d);
@@ -842,8 +853,13 @@ static void find_python(void) {
  * HTTP
  * --------------------------------------------------------------------- */
 
+typedef struct account account_t;
+
 typedef struct {
     osal_socket_t sock;
+    int           local;            /* the request came from this computer */
+    account_t    *who;              /* who is signed in; NULL with no accounts (anyone on this computer) */
+    char          session[80];
     char          method[8];
     char          path[256];
     char          query[2048];
@@ -869,8 +885,8 @@ static int send_all(osal_socket_t s, const char *data, size_t len) {
 
 static void respond(request_t *req, int status, const char *type, const char *body, size_t len) {
     char        head[512];
-    const char *reason = (status == 200) ? "OK" : (status == 400) ? "Bad Request" : (status == 403) ? "Forbidden" :
-                         (status == 404) ? "Not Found" : (status == 409) ? "Conflict" : (status == 413) ? "Payload Too Large" :
+    const char *reason = (status == 200) ? "OK" : (status == 400) ? "Bad Request" : (status == 401) ? "Unauthorized" : (status == 403) ? "Forbidden" :
+                         (status == 404) ? "Not Found" : (status == 409) ? "Conflict" : (status == 413) ? "Payload Too Large" : (status == 429) ? "Too Many Requests" :
                          "Internal Server Error";
     int         n = snprintf(head, sizeof(head),
                              "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %llu\r\n"
@@ -1007,6 +1023,7 @@ static int read_request(request_t *req) {
     copy_str(req->path, sizeof(req->path), target);
     header_value(head, "Host", req->host, sizeof(req->host));
     header_value(head, "X-MM-Token", req->token, sizeof(req->token));
+    header_value(head, "X-MM-Session", req->session, sizeof(req->session));
     header_value(head, "X-MM-SIP-Password", req->sip_password, sizeof(req->sip_password));
     header_value(head, "Content-Length", clen, sizeof(clen));
 
@@ -1036,19 +1053,830 @@ static int read_request(request_t *req) {
     return 0;
 }
 
-/* Only accept requests addressed to this computer by name (stops DNS rebinding). */
+/*
+ * Only accept requests addressed to this computer by name (stops DNS rebinding),
+ * or to the address given with -L.
+ */
+static char g_listen[64];
+
 static int host_ok(const char *host) {
-    char ok[3][64];
+    char ok[4][96];
 
     snprintf(ok[0], sizeof(ok[0]), "127.0.0.1:%d", g_port);
     snprintf(ok[1], sizeof(ok[1]), "localhost:%d", g_port);
     snprintf(ok[2], sizeof(ok[2]), "[::1]:%d", g_port);
-    for (int i = 0; i < 3; i++) {
+    snprintf(ok[3], sizeof(ok[3]), "%s:%d", g_listen[0] ? g_listen : "127.0.0.1", g_port);
+    for (int i = 0; i < 4; i++) {
         if (strcmp(host, ok[i]) == 0) {
             return 1;
         }
     }
     return 0;
+}
+
+/* ---------------------------------------------------------------------
+ * Accounts
+ *
+ * With no accounts, the control panel works as it always has: anyone on
+ * this computer can use all of it, and nobody else can reach it.  Once an
+ * admin adds an account, everyone signs in.  An admin can use everything.
+ * A user only sees the phones an admin gave them, and on each phone only the
+ * parts the admin ticked: its overview (name, call-in schedule, waiting
+ * update), its records, and each group of settings.  The checks are made
+ * here, not only in the page.
+ *
+ * The accounts live in .mm_gui/accounts in the working folder.  Folders whose
+ * names start with "." can't be reached through /api/file, so the page can't
+ * read or change it directly.  Deleting the file turns sign-in off again.
+ * --------------------------------------------------------------------- */
+
+#define ACCOUNTS_FILE       ".mm_gui/accounts"
+#define MAX_ACCOUNTS        64
+#define MAX_GRANTS          256         /* phones per account */
+#define MAX_SESSIONS        128
+#define SESSION_IDLE_S      (8 * 3600)  /* signed out after this long without a request */
+#define PBKDF2_ITERATIONS   100000
+#define MIN_PASSWORD        8
+#define MAX_PASSWORD        128
+
+/* What a user may do on a phone.  The groups match SETTING_GROUPS in html/table_editor.html. */
+enum {
+    P_OVERVIEW, P_RECORDS, P_DISPLAY, P_FEATURES, P_PRICES, P_NUMBERS, P_LOCAL, P_CARDS, P_COINS, P_ADVANCED, P_COUNT
+};
+#define P_ALL   ((1u << P_COUNT) - 1)
+static const char *perm_names[P_COUNT] = {
+    "overview", "records", "display", "features", "prices", "numbers", "local", "cards", "coins", "advanced",
+};
+
+/* The group of settings a table belongs to (keep in step with SETTING_GROUPS in the page). */
+static int table_group(unsigned id) {
+    switch (id) {
+        case 0x1d: case 0x1b: case 0x1c: case 0x55: case 0x56:
+            return P_DISPLAY;
+        case 0x1a: case 0x1e: case 0x3a:
+            return P_FEATURES;
+        case 0x49: case 0x97:
+            return P_PRICES;
+        case 0x5c: case 0x3b: case 0x18: case 0x37:
+            return P_NUMBERS;
+        case 0x86: case 0x16: case 0x87: case 0x17: case 0x5d:
+            return P_CARDS;
+        case 0x32:
+            return P_COINS;
+        case 0x96:
+        case 0x5a: case 0x5b: case 0xa0: case 0xa1: case 0x9a: case 0x9b:
+            return P_LOCAL;
+        default:
+            /* Local call determination: 0x4a-0x51, compressed 0x65-0x73, double-compressed 0x88-0x95. */
+            if ((id >= 0x4a && id <= 0x51) || (id >= 0x65 && id <= 0x73) || (id >= 0x88 && id <= 0x95)) {
+                return P_LOCAL;
+            }
+            return P_ADVANCED;
+    }
+}
+
+typedef struct {
+    char     id[11];
+    unsigned perms;
+} grant_t;
+
+struct account {
+    char     name[33];
+    int      admin;
+    char     pass[192];     /* pbkdf2-sha256$<iterations>$<salt>$<hash> */
+    int      ngrants;
+    grant_t  grants[MAX_GRANTS];
+    int      fails;         /* wrong passwords in a row */
+    time_t   locked_until;
+};
+
+typedef struct {
+    char   token[33];
+    char   user[33];
+    time_t last;
+} session_t;
+
+static account_t g_accounts[MAX_ACCOUNTS];
+static int       g_naccounts;
+static char      g_phones_dir[256] = "tables";  /* where each phone has a folder, as mm_manager -t */
+static session_t g_sessions[MAX_SESSIONS];
+static int       g_listen_any;                  /* -L 0.0.0.0: any address this computer has */
+
+static void random_bytes(uint8_t *out, size_t n) {
+#ifdef _WIN32
+    for (size_t i = 0; i < n; i += 4) {
+        unsigned int v = 0;
+
+        if (rand_s(&v) != 0) {
+            v = osal_random32();
+        }
+        for (size_t k = 0; k < 4 && i + k < n; k++) out[i + k] = (uint8_t)(v >> (8 * k));
+    }
+#else
+    FILE *f = fopen("/dev/urandom", "rb");
+
+    if (f == NULL || fread(out, 1, n, f) != n) {
+        for (size_t i = 0; i < n; i++) {
+            out[i] ^= (uint8_t)osal_random32();
+        }
+    }
+    if (f) fclose(f);
+#endif /* _WIN32 */
+}
+
+static void to_hex(char *out, const uint8_t *in, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        sprintf(out + 2 * i, "%02x", in[i]);
+    }
+    out[2 * n] = '\0';
+}
+
+static int from_hex(uint8_t *out, size_t max, const char *in) {
+    size_t n = strlen(in);
+
+    if (n % 2 || n / 2 > max) {
+        return -1;
+    }
+    for (size_t i = 0; i < n / 2; i++) {
+        int hi = hexval(in[2 * i]), lo = hexval(in[2 * i + 1]);
+
+        if (hi < 0 || lo < 0) {
+            return -1;
+        }
+        out[i] = (uint8_t)(hi * 16 + lo);
+    }
+    return (int)(n / 2);
+}
+
+static void hash_password(const char *password, char *out, size_t len) {
+    uint8_t salt[16], dk[MM_SHA256_LEN];
+    char    salt_hex[33], dk_hex[65];
+
+    random_bytes(salt, sizeof(salt));
+    mm_pbkdf2_sha256(password, strlen(password), salt, sizeof(salt), PBKDF2_ITERATIONS, dk, sizeof(dk));
+    to_hex(salt_hex, salt, sizeof(salt));
+    to_hex(dk_hex, dk, sizeof(dk));
+    snprintf(out, len, "pbkdf2-sha256$%d$%s$%s", PBKDF2_ITERATIONS, salt_hex, dk_hex);
+}
+
+static int check_password(const char *password, const char *stored) {
+    char     copy[192];
+    char    *iter_s, *salt_s, *hash_s;
+    uint8_t  salt[64], want[MM_SHA256_LEN], got[MM_SHA256_LEN];
+    int      salt_len;
+    long     iter;
+    unsigned diff = 0;
+
+    copy_str(copy, sizeof(copy), stored);
+    if (strncmp(copy, "pbkdf2-sha256$", 14) != 0) {
+        return 0;
+    }
+    iter_s = copy + 14;
+    if ((salt_s = strchr(iter_s, '$')) == NULL) return 0;
+    *salt_s++ = '\0';
+    if ((hash_s = strchr(salt_s, '$')) == NULL) return 0;
+    *hash_s++ = '\0';
+    iter = strtol(iter_s, NULL, 10);
+    salt_len = from_hex(salt, sizeof(salt), salt_s);
+    if (iter < 1 || iter > 10000000 || salt_len < 0 || from_hex(want, sizeof(want), hash_s) != (int)sizeof(want)) {
+        return 0;
+    }
+    mm_pbkdf2_sha256(password, strlen(password), salt, (size_t)salt_len, (uint32_t)iter, got, sizeof(got));
+    for (size_t i = 0; i < sizeof(got); i++) {
+        diff |= (unsigned)(got[i] ^ want[i]);
+    }
+    return diff == 0;
+}
+
+static int account_name_ok(const char *s) {
+    size_t n = strlen(s);
+
+    if (n == 0 || n > 32 || s[0] == '.' || s[0] == '-') {
+        return 0;
+    }
+    for (const char *p = s; *p; p++) {
+        if (!((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') ||
+              *p == '.' || *p == '_' || *p == '-' || *p == '@')) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int password_ok(const char *s) {
+    size_t n = strlen(s);
+
+    if (n < MIN_PASSWORD || n > MAX_PASSWORD) {
+        return 0;
+    }
+    for (const char *p = s; *p; p++) {
+        if ((unsigned char)*p < 0x20) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static account_t *find_account(const char *name) {
+    for (int i = 0; i < g_naccounts; i++) {
+        if (strcmp(g_accounts[i].name, name) == 0) {
+            return &g_accounts[i];
+        }
+    }
+    return NULL;
+}
+
+static int count_admins(void) {
+    int n = 0;
+
+    for (int i = 0; i < g_naccounts; i++) {
+        n += g_accounts[i].admin;
+    }
+    return n;
+}
+
+static unsigned parse_perms(const char *s) {
+    unsigned perms = 0;
+    char     word[24];
+
+    while (*s) {
+        size_t n = strcspn(s, ", ");
+
+        if (n > 0 && n < sizeof(word)) {
+            memcpy(word, s, n);
+            word[n] = '\0';
+            if (strcmp(word, "all") == 0) {
+                perms = P_ALL;
+            }
+            for (int i = 0; i < P_COUNT; i++) {
+                if (strcmp(word, perm_names[i]) == 0) {
+                    perms |= 1u << i;
+                }
+            }
+        }
+        s += n;
+        s += strspn(s, ", ");
+    }
+    return perms;
+}
+
+/* Parse "<terminal ID> <perm,perm...>" into g.  Returns 0 if it isn't one. */
+static int terminal_id_ok(const char *s);
+
+static int parse_grant(const char *s, grant_t *g) {
+    if (strlen(s) < 10) {
+        return 0;
+    }
+    memcpy(g->id, s, 10);
+    g->id[10] = '\0';
+    if (!terminal_id_ok(g->id) || (s[10] != '\0' && s[10] != ' ')) {
+        return 0;
+    }
+    g->perms = parse_perms(s + 10);
+    return 1;
+}
+
+static void load_accounts(void) {
+    size_t     len;
+    char      *data = (char *)read_file(ACCOUNTS_FILE, &len);
+    char      *line, *next;
+    account_t *a = NULL;
+
+    g_naccounts = 0;
+    if (data == NULL) {
+        return;
+    }
+    for (line = data; line && *line; line = next) {
+        char *eq;
+
+        next = strchr(line, '\n');
+        if (next) *next++ = '\0';
+        line[strcspn(line, "\r")] = '\0';
+        if (line[0] == '#' || (eq = strchr(line, '=')) == NULL) {
+            continue;
+        }
+        *eq++ = '\0';
+        if (strcmp(line, "phones_dir") == 0) {
+            if (safe_path(eq, 0) && strlen(eq) < sizeof(g_phones_dir)) {
+                copy_str(g_phones_dir, sizeof(g_phones_dir), eq);
+            }
+        } else if (strcmp(line, "user") == 0) {
+            a = NULL;
+            if (g_naccounts < MAX_ACCOUNTS && account_name_ok(eq) && find_account(eq) == NULL) {
+                a = &g_accounts[g_naccounts++];
+                memset(a, 0, sizeof(*a));
+                copy_str(a->name, sizeof(a->name), eq);
+            }
+        } else if (a == NULL) {
+            continue;
+        } else if (strcmp(line, "role") == 0) {
+            a->admin = strcmp(eq, "admin") == 0;
+        } else if (strcmp(line, "password") == 0) {
+            copy_str(a->pass, sizeof(a->pass), eq);
+        } else if (strcmp(line, "phone") == 0 && a->ngrants < MAX_GRANTS) {
+            if (parse_grant(eq, &a->grants[a->ngrants])) {
+                a->ngrants++;
+            }
+        }
+    }
+    free(data);
+}
+
+static int save_accounts(void) {
+    sbuf_t b = { 0 };
+    int    rc;
+
+    sb_puts(&b, "# Who may use the mmumblephone control panel (mm_gui). Change them in the control panel:\n"
+                "# global -> accounts. Delete this file to turn sign-in off (then only this computer can use it).\n");
+    sb_printf(&b, "phones_dir=%s\n", g_phones_dir);
+    for (int i = 0; i < g_naccounts; i++) {
+        const account_t *a = &g_accounts[i];
+
+        sb_printf(&b, "\nuser=%s\nrole=%s\npassword=%s\n", a->name, a->admin ? "admin" : "user", a->pass);
+        for (int k = 0; k < a->ngrants; k++) {
+            int first = 1;
+
+            sb_printf(&b, "phone=%s ", a->grants[k].id);
+            for (int p = 0; p < P_COUNT; p++) {
+                if (a->grants[k].perms & (1u << p)) {
+                    sb_printf(&b, "%s%s", first ? "" : ",", perm_names[p]);
+                    first = 0;
+                }
+            }
+            sb_puts(&b, "\n");
+        }
+    }
+    {
+        char tmp[PATH_LEN];
+
+        snprintf(tmp, sizeof(tmp), "%s.new", ACCOUNTS_FILE);
+        rc = write_file(tmp, b.s, b.len);
+        if (rc == 0) {
+            (void)remove(ACCOUNTS_FILE);    /* rename() won't replace a file on Windows */
+            rc = rename(tmp, ACCOUNTS_FILE);
+        }
+    }
+    free(b.s);
+#ifndef _WIN32
+    (void)chmod(ACCOUNTS_FILE, 0600);
+#endif /* _WIN32 */
+    return rc;
+}
+
+static const char *new_session(const char *user) {
+    session_t *s = &g_sessions[0];
+    uint8_t    r[16];
+
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        if (g_sessions[i].token[0] == '\0') {
+            s = &g_sessions[i];
+            break;
+        }
+        if (g_sessions[i].last < s->last) {
+            s = &g_sessions[i];     /* all in use: reuse the one idle longest */
+        }
+    }
+    random_bytes(r, sizeof(r));
+    to_hex(s->token, r, sizeof(r));
+    copy_str(s->user, sizeof(s->user), user);
+    s->last = time(NULL);
+    return s->token;
+}
+
+static void end_sessions(const char *user, const char *except) {
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        if (g_sessions[i].token[0] && strcmp(g_sessions[i].user, user) == 0 &&
+            (except == NULL || strcmp(g_sessions[i].token, except) != 0)) {
+            memset(&g_sessions[i], 0, sizeof(g_sessions[i]));
+        }
+    }
+}
+
+static account_t *session_account(const char *token) {
+    time_t now = time(NULL);
+
+    if (strlen(token) != 32) {
+        return NULL;
+    }
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        session_t *s = &g_sessions[i];
+
+        if (s->token[0] && strcmp(s->token, token) == 0) {
+            account_t *a = find_account(s->user);
+
+            if (a == NULL || now - s->last > SESSION_IDLE_S) {
+                memset(s, 0, sizeof(*s));
+                return NULL;
+            }
+            s->last = now;
+            return a;
+        }
+    }
+    return NULL;
+}
+
+static int is_admin(const request_t *req) {
+    return req->who == NULL || req->who->admin;
+}
+
+static unsigned phone_perms(const account_t *a, const char *id) {
+    for (int i = 0; i < a->ngrants; i++) {
+        if (strcmp(a->grants[i].id, id) == 0) {
+            return a->grants[i].perms;
+        }
+    }
+    return 0;
+}
+
+/*
+ * Split path into the parts below the phones folder: "<phones dir>/<first>/<rest>".
+ * Returns 0 if path isn't the phones folder or inside it.  Only plain names are
+ * taken (letters, digits, '_', '-', '.', not ending in '.'), so that Windows
+ * can't open "4085551234 " or "4085551234." as the folder 4085551234.
+ */
+static int phones_rel(const char *path, char *first, size_t flen, const char **rest) {
+    static char norm[PATH_LEN];
+    size_t      n = strlen(g_phones_dir);
+    const char *p;
+
+    for (p = path; *p; p++) {
+        if (!(isalnum((unsigned char)*p) || *p == '_' || *p == '-' || *p == '.' || *p == '/' || *p == '\\') ||
+            (*p == '.' && (p[1] == '\0' || p[1] == '/' || p[1] == '\\'))) {
+            return 0;
+        }
+    }
+    copy_str(norm, sizeof(norm), path);
+    for (char *c = norm; *c; c++) {
+        if (*c == '\\') *c = '/';
+    }
+    first[0] = '\0';
+    *rest = "";
+    if (strncmp(norm, g_phones_dir, n) != 0 || (norm[n] != '\0' && norm[n] != '/')) {
+        return 0;
+    }
+    p = norm + n + (norm[n] == '/');
+    {
+        size_t k = strcspn(p, "/");
+
+        snprintf(first, flen, "%.*s", (int)(k < flen ? k : flen - 1), p);
+        *rest = p[k] ? p + k + 1 : "";
+    }
+    return 1;
+}
+
+/*
+ * A user may read their own phones' folders and the shared ones (default/,
+ * the model folders) that the phones' settings come from.
+ */
+static int user_may_read(const account_t *a, const char *path) {
+    char        first[64];
+    const char *rest;
+
+    if (!phones_rel(path, first, sizeof(first), &rest)) {
+        return 0;
+    }
+    return !terminal_id_ok(first) || phone_perms(a, first) != 0;
+}
+
+static int keep_readable(const void *ctx, const char *path) {
+    return user_may_read((const account_t *)ctx, path);
+}
+
+/* A user may change a table in a group they were given, and the overview's files, in their own phones' folders. */
+static int user_may_write(const account_t *a, const char *path) {
+    char        first[64];
+    const char *rest;
+    unsigned    perms, id;
+    char        tail;
+
+    if (!phones_rel(path, first, sizeof(first), &rest) || !terminal_id_ok(first) || (perms = phone_perms(a, first)) == 0) {
+        return 0;
+    }
+    if (strcmp(rest, "phone.cfg") == 0 || strcmp(rest, "update_pending") == 0) {
+        return (perms & (1u << P_OVERVIEW)) != 0;
+    }
+    if (strlen(rest) == 15 && sscanf(rest, "mm_table_%2x.bi%c", &id, &tail) == 2 && tail == 'n' &&
+        isxdigit((unsigned char)rest[9]) && isxdigit((unsigned char)rest[10])) {
+        return (perms & (1u << table_group(id))) != 0;
+    }
+    return 0;
+}
+
+static void sb_account(sbuf_t *b, const account_t *a) {
+    sb_puts(b, "{\"name\":");
+    sb_jstr(b, a->name);
+    sb_printf(b, ",\"admin\":%s,\"phones\":[", a->admin ? "true" : "false");
+    for (int i = 0; i < a->ngrants; i++) {
+        int first = 1;
+
+        sb_printf(b, "%s{\"id\":\"%s\",\"perms\":[", i ? "," : "", a->grants[i].id);
+        for (int p = 0; p < P_COUNT; p++) {
+            if (a->grants[i].perms & (1u << p)) {
+                sb_printf(b, "%s\"%s\"", first ? "" : ",", perm_names[p]);
+                first = 0;
+            }
+        }
+        sb_puts(b, "]}");
+    }
+    sb_puts(b, "]}");
+}
+
+/* Split the body into lines in place.  Returns how many. */
+static int body_lines(request_t *req, char **lines, int max) {
+    int   n = 0;
+    char *p = req->body;
+
+    if (strlen(req->body) != req->body_len) {
+        return -1;
+    }
+    while (p && *p && n < max) {
+        char *nl = strchr(p, '\n');
+
+        if (nl) *nl = '\0';
+        p[strcspn(p, "\r")] = '\0';
+        lines[n++] = p;
+        p = nl ? nl + 1 : NULL;
+    }
+    return (p && *p) ? -1 : n;
+}
+
+/* GET /api/session: whether sign-in is on, and who is signed in. */
+static void api_session(request_t *req) {
+    sbuf_t b = { 0 };
+
+    sb_printf(&b, "{\"ok\":true,\"accounts\":%s,\"local\":%s,\"phonesDir\":", g_naccounts ? "true" : "false",
+              req->local ? "true" : "false");
+    sb_jstr(&b, g_phones_dir);
+    sb_puts(&b, ",\"user\":");
+    if (req->who) {
+        sb_account(&b, req->who);
+    } else {
+        sb_puts(&b, "null");
+    }
+    sb_puts(&b, "}");
+    respond_json(req, 200, &b);
+}
+
+/* POST /api/login: body "<name>\n<password>". */
+static void api_login(request_t *req) {
+    static const char *dummy = "pbkdf2-sha256$100000$00000000000000000000000000000000$"
+                               "0000000000000000000000000000000000000000000000000000000000000000";
+    char      *lines[3];
+    account_t *a;
+    time_t     now = time(NULL);
+    sbuf_t     b = { 0 };
+
+    if (g_naccounts == 0) {
+        respond_error(req, 409, "there are no accounts yet");
+        return;
+    }
+    if (body_lines(req, lines, 2) != 2) {
+        respond_error(req, 400, "send a name and a password");
+        return;
+    }
+    a = find_account(lines[0]);
+    if (a && a->locked_until > now) {
+        respond_error(req, 429, "too many wrong passwords: wait a minute and try again");
+        return;
+    }
+    if (!check_password(lines[1], a ? a->pass : dummy) || a == NULL) {
+        if (a && ++a->fails >= 5) {
+            long wait = 30L * (a->fails - 4);
+
+            a->locked_until = now + (wait > 900 ? 900 : wait);
+        }
+        printf("mm_gui: failed sign-in%s%s\n", a ? " for " : "", a ? a->name : "");
+        fflush(stdout);
+        respond_error(req, 401, "wrong name or password");
+        return;
+    }
+    a->fails = 0;
+    a->locked_until = 0;
+    sb_puts(&b, "{\"ok\":true,\"session\":");
+    sb_jstr(&b, new_session(a->name));
+    sb_puts(&b, ",\"user\":");
+    sb_account(&b, a);
+    sb_puts(&b, "}");
+    respond_json(req, 200, &b);
+}
+
+static void api_logout(request_t *req) {
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        if (g_sessions[i].token[0] && strcmp(g_sessions[i].token, req->session) == 0) {
+            memset(&g_sessions[i], 0, sizeof(g_sessions[i]));
+        }
+    }
+    respond_ok(req);
+}
+
+/* POST /api/password: body "<current password>\n<new password>".  Signs out the account's other sessions. */
+static void api_password(request_t *req) {
+    char *lines[3];
+
+    if (req->who == NULL) {
+        respond_error(req, 409, "there are no accounts yet");
+        return;
+    }
+    if (body_lines(req, lines, 2) != 2 || !check_password(lines[0], req->who->pass)) {
+        respond_error(req, 403, "the current password isn't right");
+        return;
+    }
+    if (!password_ok(lines[1])) {
+        respond_error(req, 400, "a password needs 8 to 128 characters");
+        return;
+    }
+    hash_password(lines[1], req->who->pass, sizeof(req->who->pass));
+    if (save_accounts() != 0) {
+        respond_error(req, 500, strerror(errno));
+        return;
+    }
+    end_sessions(req->who->name, req->session);
+    respond_ok(req);
+}
+
+/* GET /api/accounts (admins). */
+static void api_accounts(request_t *req) {
+    sbuf_t b = { 0 };
+
+    sb_puts(&b, "{\"ok\":true,\"phonesDir\":");
+    sb_jstr(&b, g_phones_dir);
+    sb_puts(&b, ",\"permissions\":[");
+    for (int p = 0; p < P_COUNT; p++) {
+        sb_printf(&b, "%s\"%s\"", p ? "," : "", perm_names[p]);
+    }
+    sb_puts(&b, "],\"accounts\":[");
+    for (int i = 0; i < g_naccounts; i++) {
+        if (i) sb_puts(&b, ",");
+        sb_account(&b, &g_accounts[i]);
+    }
+    sb_puts(&b, "]}");
+    respond_json(req, 200, &b);
+}
+
+/*
+ * POST /api/accounts/save (admins): add or change an account.  The body has
+ * one "key=value" per line: name, role (admin or user), password (needed for
+ * a new account; otherwise only to change it), and phone=<terminal ID>
+ * <perm,perm...> for each phone the account gets, which replace the ones it had.
+ * The first account must be an admin, and that admin is signed in straight away.
+ */
+static void api_accounts_save(request_t *req) {
+    char      *lines[MAX_GRANTS + 8];
+    int        n = body_lines(req, lines, MAX_GRANTS + 8);
+    const char *name = "", *role = "user", *password = NULL;
+    grant_t    grants[MAX_GRANTS];
+    int        ngrants = 0;
+    account_t *a;
+    int        first = g_naccounts == 0;
+    sbuf_t     b = { 0 };
+
+    if (n < 0) {
+        respond_error(req, 400, "too many lines");
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        char *eq = strchr(lines[i], '=');
+
+        if (eq == NULL) {
+            continue;
+        }
+        *eq++ = '\0';
+        if (strcmp(lines[i], "name") == 0) {
+            name = eq;
+        } else if (strcmp(lines[i], "role") == 0) {
+            role = eq;
+        } else if (strcmp(lines[i], "password") == 0 && eq[0]) {
+            password = eq;
+        } else if (strcmp(lines[i], "phone") == 0) {
+            if (ngrants >= MAX_GRANTS || !parse_grant(eq, &grants[ngrants])) {
+                respond_error(req, 400, "a phone is its 10-digit terminal ID and what the account may do there");
+                return;
+            }
+            ngrants++;
+        }
+    }
+    if (!account_name_ok(name)) {
+        respond_error(req, 400, "a name is 1 to 32 letters, digits, '.', '_', '-' or '@'");
+        return;
+    }
+    if (strcmp(role, "admin") != 0 && strcmp(role, "user") != 0) {
+        respond_error(req, 400, "the role is admin or user");
+        return;
+    }
+    if (password && !password_ok(password)) {
+        respond_error(req, 400, "a password needs 8 to 128 characters");
+        return;
+    }
+    a = find_account(name);
+    if (a == NULL) {
+        if (password == NULL) {
+            respond_error(req, 400, "a new account needs a password");
+            return;
+        }
+        if (first && strcmp(role, "admin") != 0) {
+            respond_error(req, 400, "the first account must be an admin, so someone can manage the others");
+            return;
+        }
+        if (g_naccounts >= MAX_ACCOUNTS) {
+            respond_error(req, 409, "there are already as many accounts as mm_gui can hold");
+            return;
+        }
+        a = &g_accounts[g_naccounts++];
+        memset(a, 0, sizeof(*a));
+        copy_str(a->name, sizeof(a->name), name);
+    } else if (a->admin && strcmp(role, "admin") != 0 && count_admins() == 1) {
+        respond_error(req, 409, "this is the only admin: make another admin first");
+        return;
+    }
+    a->admin = strcmp(role, "admin") == 0;
+    if (password) {
+        hash_password(password, a->pass, sizeof(a->pass));
+        a->fails = 0;
+        a->locked_until = 0;
+        end_sessions(a->name, req->session);
+    }
+    memcpy(a->grants, grants, sizeof(grants[0]) * (size_t)ngrants);
+    a->ngrants = ngrants;
+    if (save_accounts() != 0) {
+        respond_error(req, 500, strerror(errno));
+        load_accounts();
+        return;
+    }
+    printf("mm_gui: account %s saved\n", a->name);
+    fflush(stdout);
+    sb_puts(&b, "{\"ok\":true");
+    if (first) {
+        sb_puts(&b, ",\"session\":");
+        sb_jstr(&b, new_session(a->name));
+    }
+    sb_puts(&b, ",\"user\":");
+    sb_account(&b, a);
+    sb_puts(&b, "}");
+    respond_json(req, 200, &b);
+}
+
+/* POST /api/accounts/delete?name=N (admins).  The last admin stays. */
+static void api_accounts_delete(request_t *req) {
+    char       name[64];
+    account_t *a;
+
+    query_param(req, "name", name, sizeof(name));
+    a = find_account(name);
+    if (a == NULL) {
+        respond_error(req, 404, "no such account");
+        return;
+    }
+    if (a->admin && count_admins() == 1) {
+        respond_error(req, 409, "this is the only admin: make another admin first");
+        return;
+    }
+    end_sessions(a->name, NULL);
+    memmove(a, a + 1, sizeof(*a) * (size_t)(g_naccounts - 1 - (a - g_accounts)));
+    g_naccounts--;
+    if (save_accounts() != 0) {
+        respond_error(req, 500, strerror(errno));
+        load_accounts();
+        return;
+    }
+    respond_ok(req);
+}
+
+/* POST /api/accounts/settings?phones_dir=D (admins): where the phones' folders are (mm_manager -t). */
+static void api_accounts_settings(request_t *req) {
+    char dir[256];
+
+    if (query_param(req, "phones_dir", dir, sizeof(dir))) {
+        for (char *c = dir; *c; c++) {
+            if (*c == '\\') *c = '/';
+        }
+        if (!safe_path(dir, 0)) {
+            respond_error(req, 400, "the phones folder must be inside the working folder");
+            return;
+        }
+        copy_str(g_phones_dir, sizeof(g_phones_dir), dir);
+    }
+    if (g_naccounts && save_accounts() != 0) {
+        respond_error(req, 500, strerror(errno));
+        return;
+    }
+    respond_ok(req);
+}
+
+/* A phone's terminal ID changed: its accounts follow it. */
+static void rename_grants(const char *from, const char *to) {
+    int changed = 0;
+
+    for (int i = 0; i < g_naccounts; i++) {
+        for (int k = 0; k < g_accounts[i].ngrants; k++) {
+            if (strcmp(g_accounts[i].grants[k].id, from) == 0) {
+                copy_str(g_accounts[i].grants[k].id, sizeof(g_accounts[i].grants[k].id), to);
+                changed = 1;
+            }
+        }
+    }
+    if (changed) {
+        (void)save_accounts();
+    }
 }
 
 /* ---------------------------------------------------------------------
@@ -1100,9 +1928,9 @@ static void api_info(request_t *req) {
     sb_puts(&b, "{\"ok\":true,\"version\":");
     sb_jstr(&b, CMAKE_VERSION_STR " [" GIT_VERSION_STR "]");
     sb_puts(&b, ",\"platform\":\"" PLATFORM_NAME "\",\"root\":");
-    sb_jstr(&b, g_root);
+    sb_jstr(&b, is_admin(req) ? g_root : "");
     sb_puts(&b, ",\"bindir\":");
-    sb_jstr(&b, g_bindir);
+    sb_jstr(&b, is_admin(req) ? g_bindir : "");
     sb_printf(&b, ",\"manager\":%s,\"python\":", is_file(path) ? "true" : "false");
     sb_jstr(&b, g_python_version);
     sb_puts(&b, ",\"packages\":[");
@@ -1137,10 +1965,16 @@ static void api_list(request_t *req) {
         respond_error(req, 400, "that folder is outside the working folder");
         return;
     }
+    if (!is_admin(req) && !user_may_read(req->who, dir)) {
+        /* Not one of this user's folders: as far as they can tell, it is empty. */
+        sb_puts(&b, "{\"ok\":true,\"exists\":false,\"entries\":[]}");
+        respond_json(req, 200, &b);
+        return;
+    }
     sb_puts(&b, "{\"ok\":true,\"exists\":");
     sb_puts(&b, (dir[0] == '\0' || is_dir(dir)) ? "true" : "false");
     sb_puts(&b, ",\"entries\":[");
-    list_dir(&b, dir, depth, &count);
+    list_dir(&b, dir, depth, &count, is_admin(req) ? NULL : keep_readable, req->who);
     sb_puts(&b, "]}");
     respond_json(req, 200, &b);
 }
@@ -1151,6 +1985,10 @@ static void api_file(request_t *req) {
     query_param(req, "path", path, sizeof(path));
     if (!safe_path(path, 0)) {
         respond_error(req, 400, "that file is outside the working folder");
+        return;
+    }
+    if (!is_admin(req) && (strcmp(req->method, "GET") == 0 ? !user_may_read(req->who, path) : !user_may_write(req->who, path))) {
+        respond_error(req, 403, "your account can't change that: ask an admin");
         return;
     }
     if (strcmp(req->method, "GET") == 0) {
@@ -1208,6 +2046,10 @@ static void api_delete(request_t *req) {
     query_param(req, "path", path, sizeof(path));
     if (!safe_path(path, 0) || !is_file(path)) {
         respond_error(req, 404, "no such file");
+        return;
+    }
+    if (!is_admin(req) && !user_may_write(req->who, path)) {
+        respond_error(req, 403, "your account can't change that: ask an admin");
         return;
     }
     if (remove(path) != 0) {
@@ -1410,6 +2252,10 @@ static void api_db(request_t *req) {
     } else {
         terminal[0] = '\0';
         where       = "";
+    }
+    if (!is_admin(req) && (terminal[0] == '\0' || !(phone_perms(req->who, terminal) & (1u << P_RECORDS)))) {
+        respond_error(req, 403, "your account can't see those records: ask an admin");
+        return;
     }
 
     if (!is_file(DB_FILE)) {
@@ -1657,6 +2503,7 @@ static void api_phone_rename(request_t *req) {
         respond_error(req, 500, strerror(errno));
         return;
     }
+    rename_grants(from, to);
 
     if (is_file(DB_FILE) && sqlite3_open_v2(DB_FILE, &db, SQLITE_OPEN_READWRITE, NULL) == SQLITE_OK) {
         char   names[64][80];
@@ -1719,8 +2566,18 @@ static void handle(request_t *req) {
     int is_get  = strcmp(req->method, "GET") == 0 || strcmp(req->method, "HEAD") == 0;
     int is_post = strcmp(req->method, "POST") == 0;
 
-    if (!host_ok(req->host)) {
+    /*
+     * With accounts, other computers may use the panel (with -L), and nothing
+     * works without signing in, so any host name will do.  Without, it is only
+     * for this computer.
+     */
+    if (!(g_naccounts && g_listen_any) && !host_ok(req->host)) {
         respond_error(req, 403, "mm_gui only answers requests for 127.0.0.1 or localhost");
+        return;
+    }
+    if (!req->local && g_naccounts == 0) {
+        respond_error(req, 403, "the control panel has no accounts yet, so it only answers the computer it runs on: "
+                      "add an admin account there (global -> accounts) to use it from other computers");
         return;
     }
     if (strcmp(req->path, "/") == 0 || strcmp(req->path, "/index.html") == 0 || strcmp(req->path, "/table_editor.html") == 0) {
@@ -1739,7 +2596,41 @@ static void handle(request_t *req) {
         respond_error(req, 403, "missing or stale token: reload the page");
         return;
     }
-    if (strcmp(req->path, "/api/info") == 0 && is_get) {
+    if (g_naccounts) {
+        req->who = session_account(req->session);
+    }
+    if (strcmp(req->path, "/api/session") == 0 && is_get) {
+        api_session(req);
+        return;
+    }
+    if (strcmp(req->path, "/api/login") == 0 && is_post) {
+        api_login(req);
+        return;
+    }
+    if (g_naccounts && req->who == NULL) {
+        respond_error(req, 401, "sign in first");
+        return;
+    }
+    if (!is_admin(req) && !(strcmp(req->path, "/api/info") == 0 || strcmp(req->path, "/api/list") == 0 ||
+                            strcmp(req->path, "/api/file") == 0 || strcmp(req->path, "/api/delete") == 0 ||
+                            strcmp(req->path, "/api/db") == 0 || strcmp(req->path, "/api/logout") == 0 ||
+                            strcmp(req->path, "/api/password") == 0)) {
+        respond_error(req, 403, "only an admin can do that");
+        return;
+    }
+    if (strcmp(req->path, "/api/logout") == 0 && is_post) {
+        api_logout(req);
+    } else if (strcmp(req->path, "/api/password") == 0 && is_post) {
+        api_password(req);
+    } else if (strcmp(req->path, "/api/accounts") == 0 && is_get) {
+        api_accounts(req);
+    } else if (strcmp(req->path, "/api/accounts/save") == 0 && is_post) {
+        api_accounts_save(req);
+    } else if (strcmp(req->path, "/api/accounts/delete") == 0 && is_post) {
+        api_accounts_delete(req);
+    } else if (strcmp(req->path, "/api/accounts/settings") == 0 && is_post) {
+        api_accounts_settings(req);
+    } else if (strcmp(req->path, "/api/info") == 0 && is_get) {
         api_info(req);
     } else if (strcmp(req->path, "/api/list") == 0 && is_get) {
         api_list(req);
@@ -1774,28 +2665,10 @@ static void handle(request_t *req) {
  * --------------------------------------------------------------------- */
 
 static void make_token(void) {
-    uint32_t r[4] = { 0 };
+    uint8_t r[16] = { 0 };
 
-#ifdef _WIN32
-    for (int i = 0; i < 4; i++) {
-        unsigned int v = 0;
-
-        if (rand_s(&v) != 0) {
-            v = osal_random32();
-        }
-        r[i] = v;
-    }
-#else
-    FILE *f = fopen("/dev/urandom", "rb");
-
-    if (f == NULL || fread(r, sizeof(r), 1, f) != 1) {
-        for (int i = 0; i < 4; i++) {
-            r[i] ^= osal_random32();
-        }
-    }
-    if (f) fclose(f);
-#endif /* _WIN32 */
-    snprintf(g_token, sizeof(g_token), "%08x%08x%08x%08x", r[0], r[1], r[2], r[3]);
+    random_bytes(r, sizeof(r));
+    to_hex(g_token, r, sizeof(r));
 }
 
 static int dir_writable(const char *dir) {
@@ -1939,8 +2812,11 @@ static void on_signal(int sig) {
 
 static void usage(const char *name, FILE *stream) {
     fprintf(stream,
-            "usage: %s [-p <port>] [-w <working folder>] [-H <table_editor.html>] [-n]\n"
+            "usage: %s [-p <port>] [-w <working folder>] [-H <table_editor.html>] [-L <address>] [-n]\n"
             "\t-p <port> - Local port for the control panel (default: %d, or the next free one).\n"
+            "\t-L <address> - Also answer other computers on this address (0.0.0.0 for all of this computer's\n"
+            "\t               addresses).  They must sign in, so an admin account must be added first.  The\n"
+            "\t               connection isn't encrypted: use it only on a network you trust, or through a VPN.\n"
             "\t-w <folder> - Working folder with tables/ and config/ (default: found automatically).\n"
             "\t-H <file> - The table_editor.html page to serve (default: found automatically).\n"
             "\t-n - Don't open a web browser.\n"
@@ -1955,6 +2831,7 @@ int main(int argc, char *argv[]) {
     int           open_it = 1, port_given = 0;
     osal_socket_t lsock = OSAL_INVALID_SOCKET;
     struct sockaddr_in addr;
+    uint32_t      listen_addr = htonl(INADDR_LOOPBACK);
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
@@ -1964,6 +2841,8 @@ int main(int argc, char *argv[]) {
             opt_root = argv[++i];
         } else if (strcmp(argv[i], "-H") == 0 && i + 1 < argc) {
             opt_html = argv[++i];
+        } else if (strcmp(argv[i], "-L") == 0 && i + 1 < argc) {
+            copy_str(g_listen, sizeof(g_listen), argv[++i]);
         } else if (strcmp(argv[i], "-n") == 0) {
             open_it = 0;
         } else if (strcmp(argv[i], "-h") == 0) {
@@ -1977,6 +2856,19 @@ int main(int argc, char *argv[]) {
     if (g_port <= 0 || g_port > 65535) {
         fprintf(stderr, "mm_gui: bad port.\n");
         return -EINVAL;
+    }
+    if (g_listen[0]) {
+        struct in_addr a;
+
+        if (inet_pton(AF_INET, g_listen, &a) != 1) {
+            fprintf(stderr, "mm_gui: -L takes an IPv4 address of this computer, such as 192.168.1.10, or 0.0.0.0 for all of them.\n");
+            return -EINVAL;
+        }
+        listen_addr = a.s_addr;
+        g_listen_any = 1;
+        if (listen_addr == htonl(INADDR_ANY)) {
+            g_listen[0] = '\0';    /* no one name to check the Host header against */
+        }
     }
 
     printf("mmumblephone control panel %s [%s]\n", CMAKE_VERSION_STR, GIT_VERSION_STR);
@@ -2083,6 +2975,7 @@ int main(int argc, char *argv[]) {
     }
     make_token();
     find_python();
+    load_accounts();
 
     if (osal_net_init() != 0) {
         return -EIO;
@@ -2105,7 +2998,7 @@ int main(int argc, char *argv[]) {
 #endif /* _WIN32 */
         memset(&addr, 0, sizeof(addr));
         addr.sin_family      = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_addr.s_addr = listen_addr;
         addr.sin_port        = htons((uint16_t)g_port);
         if (bind(lsock, (struct sockaddr *)&addr, sizeof(addr)) == 0 && listen(lsock, 16) == 0) {
             break;
@@ -2114,15 +3007,22 @@ int main(int argc, char *argv[]) {
         lsock = OSAL_INVALID_SOCKET;
     }
     if (lsock == OSAL_INVALID_SOCKET) {
-        fprintf(stderr, "mm_gui: couldn't listen on 127.0.0.1:%d.  Try another port with -p.\n", g_port);
+        fprintf(stderr, "mm_gui: couldn't listen on %s:%d.  Try another port with -p.\n",
+                g_listen_any ? (g_listen[0] ? g_listen : "0.0.0.0") : "127.0.0.1", g_port);
         return -EADDRINUSE;
     }
 
-    snprintf(url, sizeof(url), "http://127.0.0.1:%d/", g_port);
+    snprintf(url, sizeof(url), "http://%s:%d/", g_listen[0] ? g_listen : "127.0.0.1", g_port);
     printf("Working folder: %s\n", g_root);
     printf("Programs:       %s\n", g_bindir);
     printf("Page:           %s%s\n", g_html, is_file(g_html) ? "" : " (not found!)");
     printf("Python:         %s\n", g_python_version[0] ? g_python_version : "not found (only needed for the table generators)");
+    printf("Accounts:       %s\n", g_naccounts ? "on: everyone signs in" : "none: anyone on this computer can use the control panel");
+    if (g_listen_any) {
+        printf("Other computers: on port %d of %s.%s\n", g_port, g_listen[0] ? g_listen : "every address of this computer",
+               g_naccounts ? "" : "  Add an admin account first: until then, only this computer is answered.");
+        printf("                 The connection isn't encrypted, so only do this on a network you trust.\n");
+    }
     printf("\nThe control panel is at %s\n", url);
     printf("Leave this window open while you use it.  Close it (or press ^C) to quit.\n");
     fflush(stdout);
@@ -2143,9 +3043,19 @@ int main(int argc, char *argv[]) {
         if (select((int)lsock + 1, &rd, NULL, NULL, &tv) <= 0) {
             continue;
         }
-        s = accept(lsock, NULL, NULL);
-        if (s == OSAL_INVALID_SOCKET) {
-            continue;
+        {
+            struct sockaddr_in peer, self_addr;
+            osal_socklen_t     plen = sizeof(peer), slen = sizeof(self_addr);
+
+            memset(&req, 0, sizeof(req));
+            s = accept(lsock, (struct sockaddr *)&peer, &plen);
+            if (s == OSAL_INVALID_SOCKET) {
+                continue;
+            }
+            /* From this computer: a loopback address, or the address it was sent to (one of ours). */
+            req.local = (ntohl(peer.sin_addr.s_addr) >> 24) == 127 ||
+                        (getsockname(s, (struct sockaddr *)&self_addr, &slen) == 0 &&
+                         self_addr.sin_addr.s_addr == peer.sin_addr.s_addr);
         }
 #ifdef _WIN32
         {
@@ -2164,7 +3074,6 @@ int main(int argc, char *argv[]) {
             setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof(timeout));
         }
 #endif /* _WIN32 */
-        memset(&req, 0, sizeof(req));
         req.sock = s;
         status = read_request(&req);
         if (status == 0) {

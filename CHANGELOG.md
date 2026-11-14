@@ -1,5 +1,12 @@
 # Changelog
 
+### Unreleased: control panel accounts
+
+- Optional accounts in the control panel (`mm_gui`), under global → accounts. With none, nothing changes. Once an admin account exists, everyone signs in. Admins can use everything; a user only gets the phones an admin assigns, and on each only the parts ticked: overview, records and each group of settings. mm_gui enforces this on every request.
+- Passwords are stored as salted PBKDF2-SHA-256 hashes in `.mm_gui/accounts`, which the file API can't reach. Repeated wrong passwords lock an account briefly; the last admin can't be removed.
+- `mm_gui -L <address>` lets other computers sign in (plain HTTP: trusted networks only). Without accounts, only the local computer is answered, as before.
+- Tests: SHA-256/HMAC/PBKDF2 vectors (`test_sha256`) and an end-to-end check of the accounts API (`tests/test_gui_accounts.py`).
+
 ### 0.4.0: Protel and Elcotel groundwork, compatibility matrix
 
 - Add `mm_payphone.py` and the `payphones` package: a backend boundary for families other than the Nortel Millennium, which mm_manager keeps handling as before.
