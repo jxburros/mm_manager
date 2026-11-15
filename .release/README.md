@@ -1,6 +1,6 @@
 # Release integration
 
-The workflow and toolkit checkout are pinned to infrastructure commit `181636b602317ba703c3f4bf12775c34560f4efb`. Keep those pins equal when upgrading. The local build/package/signing steps remain responsible for application-specific smoke tests and existing updater signatures. The shared final stage runs only pinned toolkit code with repository write permissions.
+The workflow and toolkit checkout are pinned to infrastructure commit `d7f42f9910c075ef34915fa2b95cf28dd2be534a`. Keep those pins equal when upgrading. The local build/package/signing steps remain responsible for application-specific smoke tests and existing updater signatures. The shared final stage runs only pinned toolkit code with repository write permissions.
 
 `release.json` is authoritative; `.release/config.json` lists embedded version fields, app scopes, required platform deliverables, bounded package variants, release notes, checksum naming, and the executable security profile. Exact required assets must all exist. Any optional filename rule has explicit bounds and does not exempt a required platform.
 
