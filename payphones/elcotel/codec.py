@@ -1,8 +1,8 @@
 """Encodings shared by the Elcotel Series 5 files (R94, S94, P94/P99).
 
-Clean-room implementation from the published format description in
+A separate implementation written from the format description in
 elcotel-playground's README (https://github.com/vekejsn/elcotel-playground);
-no code from that GPL-3.0 project is used.
+no code from that GPL-3.0 project was copied or adapted.
 """
 
 # A 0x00 byte is followed by the number of zeros it stands for.

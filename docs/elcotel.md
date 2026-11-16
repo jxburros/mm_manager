@@ -22,9 +22,11 @@ In P94 patterns, the digit 0 is stored as a zero byte, the same as the padding. 
 
 ## Formats and licensing
 
-The formats are from the description published by [elcotel-playground](https://github.com/vekejsn/elcotel-playground). That project is GPL-3.0 and mmumblephone is MIT, so the implementation here is clean room: it is written from the format description, and no code from that project is used. Two R94 details were found here, from the public sample `208209BN.R94`:
+The formats come from the description in [elcotel-playground](https://github.com/vekejsn/elcotel-playground)'s README. That project is GPL-3.0 and mmumblephone is MIT, so this is a separate implementation written from that description, and no code from that project was copied or adapted. File layouts are facts about the format, not code. The work is credited here all the same.
+
+Two R94 details were worked out here from the public sample `208209BN.R94`, and have only been seen in that one file:
 
 * header bytes 1–2 hold the expanded body length;
-* body bytes 887, 888 and 889 are the counts of NPA groups, price bands and NXX tables. With them, 890 + 6 × groups + 4 × bands + 103 × tables equals the body length exactly.
+* body bytes 887, 888 and 889 are the counts of NPA groups, price bands and NXX tables. In that sample, 890 + 6 × groups + 4 × bands + 103 × tables equals the body length exactly.
 
 Sample files, and reports of which files the Elcotel software and phones accept, would let the S94/P94 support move from description-only to checked against real files.
