@@ -12,11 +12,13 @@ offsets that follow from counts it holds:
           4 x B    price bands: initial rate, initial time, additional rate, additional time
           103 x T  NXX tables (100-byte bitmap and 3 bytes of metadata)
 
-The layout of the first 864 bytes is from elcotel-playground's published
-description (clean room; none of its GPL-3.0 code is used). The meaning of
-the counts at 887-889, and that header bytes 1-2 hold the expanded body
-length, were found here from the one public sample (208209BN.R94), where
-890 + 6N + 4B + 103T equals the body length exactly. The group headers and
+The layout of the first 864 bytes is from the format description in
+elcotel-playground's README; this is a separate implementation, and none of
+that project's GPL-3.0 code was copied or adapted. The meaning of the counts
+at 887-889, and that header bytes 1-2 hold the expanded body length, were
+worked out here from the one public sample (208209BN.R94), where
+890 + 6N + 4B + 103T equals the body length exactly; no other file has been
+checked. The group headers and
 NXX tables are kept as raw bytes, since their fields are not yet understood.
 """
 

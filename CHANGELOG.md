@@ -1,5 +1,9 @@
 # Changelog
 
+### 0.5.2: accurate wording on the Elcotel formats
+
+- The Elcotel documentation and code comments no longer call the R94/S94/P94 support "clean room". That term means a documented process with separate people for reading the original and writing the code, which wasn't followed here. They now say what was done: a separate implementation written from elcotel-playground's published format description, with no code from that GPL-3.0 project copied or adapted. The two R94 details found here are marked as seen in only one sample file. No change to the programs.
+
 ### 0.5.1: releases publish again
 
 - The release workflow now uses the shared release toolkit at d7f42f9. The earlier pin looked up its new draft release by tag, which GitHub doesn't answer for drafts, so publishing stopped with "Not Found" (the 0.4.0 release run). The new toolkit also puts the notes of every unpublished version (0.4.0, 0.5.0, 0.5.1) into the release.
@@ -15,7 +19,7 @@
 
 - Add `mm_payphone.py` and the `payphones` package: a backend boundary for families other than the Nortel Millennium, which mm_manager keeps handling as before.
 - Protel: a configuration model (cost bands, area code and exchange bands, options) checked against the ExpressNet manual's limits; reading ExpressNet export files into inventory entries; ExpressNet communication errors explained by session phase. Native programming and reporting are not implemented: the protocol is not public and has not been captured yet (docs/protel.md).
-- Elcotel Series 5: clean-room reading, checking and writing of R94, S94 and P94/P99 files.
+- Elcotel Series 5: reading, checking and writing of R94, S94 and P94/P99 files, written from elcotel-playground's published format description (no code from that GPL-3.0 project was copied or adapted).
 - Session captures with the metadata research needs, transcript import and comparison.
 - A compatibility matrix (config/compatibility.csv, docs/compatibility.md) listing every operation for every board as planned, experimental or hardware verified. Nothing for Protel or Elcotel is hardware verified.
 
