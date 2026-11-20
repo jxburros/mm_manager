@@ -1815,6 +1815,86 @@ static void api_accounts_save(request_t *req) {
     respond_json(req, 200, &b);
 }
 
+/*
+ * The page's settings: mm_manager's options (shared by the admins, as there is
+ * one mm_manager) and each account's own (where it was, theme, hints).  The page
+ * also keeps them in the browser, but a browser keeps them per address, and
+ * mm_gui's address changes when it moves to the next free port, or between
+ * 127.0.0.1 and localhost.  Here they stay with the working folder.
+ */
+#define PREFS_DIR           ".mm_gui/prefs"
+#define MAX_PREFS           (256 * 1024)
+
+/* scope "manager" (admins): mm_manager's options; anything else: this account's own. */
+static int prefs_path(request_t *req, char *path, size_t len) {
+    char scope[16] = "";
+
+    (void)query_param(req, "scope", scope, sizeof(scope));
+    if (strcmp(scope, "manager") == 0) {
+        if (!is_admin(req)) {
+            return -1;
+        }
+        snprintf(path, len, "%s/manager.json", PREFS_DIR);
+    } else if (req->who) {
+        snprintf(path, len, "%s/user-%s.json", PREFS_DIR, req->who->name);
+    } else {
+        snprintf(path, len, "%s/user.json", PREFS_DIR);
+    }
+    return 0;
+}
+
+/* GET /api/prefs?scope=S: {"ok":true,"prefs":"<the saved JSON, or empty>"}.  PUT saves the body. */
+static void api_prefs(request_t *req) {
+    char path[PATH_LEN];
+
+    if (prefs_path(req, path, sizeof(path) - 8) != 0) {
+        respond_error(req, 403, "only an admin can do that");
+        return;
+    }
+    if (strcmp(req->method, "GET") == 0) {
+        size_t len  = 0;
+        char  *data = (char *)read_file(path, &len);
+        sbuf_t b    = { 0 };
+
+        sb_puts(&b, "{\"ok\":true,\"prefs\":");
+        sb_json(&b, data ? data : "", data ? len : 0);
+        sb_puts(&b, "}");
+        free(data);
+        respond_json(req, 200, &b);
+    } else if (strcmp(req->method, "PUT") == 0) {
+        char tmp[PATH_LEN + 8];
+
+        if (req->body_len > MAX_PREFS || req->body_len == 0 || req->body[0] != '{') {
+            respond_error(req, 400, "send the settings as a JSON object");
+            return;
+        }
+        snprintf(tmp, sizeof(tmp), "%s.new", path);
+        if (write_file(tmp, req->body, req->body_len) != 0) {
+            respond_error(req, 500, strerror(errno));
+            return;
+        }
+        (void)remove(path);     /* rename() won't replace a file on Windows */
+        if (rename(tmp, path) != 0) {
+            respond_error(req, 500, strerror(errno));
+            return;
+        }
+#ifndef _WIN32
+        (void)chmod(path, 0600);
+#endif /* _WIN32 */
+        respond_ok(req);
+    } else {
+        respond_error(req, 400, "use GET or PUT");
+    }
+}
+
+/* An account went: so do its settings. */
+static void remove_prefs(const char *name) {
+    char path[PATH_LEN];
+
+    snprintf(path, sizeof(path), "%s/user-%s.json", PREFS_DIR, name);
+    (void)remove(path);
+}
+
 /* POST /api/accounts/delete?name=N (admins).  The last admin stays. */
 static void api_accounts_delete(request_t *req) {
     char       name[64];
@@ -1831,6 +1911,7 @@ static void api_accounts_delete(request_t *req) {
         return;
     }
     end_sessions(a->name, NULL);
+    remove_prefs(a->name);
     memmove(a, a + 1, sizeof(*a) * (size_t)(g_naccounts - 1 - (a - g_accounts)));
     g_naccounts--;
     if (save_accounts() != 0) {
@@ -2614,7 +2695,7 @@ static void handle(request_t *req) {
     if (!is_admin(req) && !(strcmp(req->path, "/api/info") == 0 || strcmp(req->path, "/api/list") == 0 ||
                             strcmp(req->path, "/api/file") == 0 || strcmp(req->path, "/api/delete") == 0 ||
                             strcmp(req->path, "/api/db") == 0 || strcmp(req->path, "/api/logout") == 0 ||
-                            strcmp(req->path, "/api/password") == 0)) {
+                            strcmp(req->path, "/api/password") == 0 || strcmp(req->path, "/api/prefs") == 0)) {
         respond_error(req, 403, "only an admin can do that");
         return;
     }
@@ -2630,6 +2711,8 @@ static void handle(request_t *req) {
         api_accounts_delete(req);
     } else if (strcmp(req->path, "/api/accounts/settings") == 0 && is_post) {
         api_accounts_settings(req);
+    } else if (strcmp(req->path, "/api/prefs") == 0) {
+        api_prefs(req);
     } else if (strcmp(req->path, "/api/info") == 0 && is_get) {
         api_info(req);
     } else if (strcmp(req->path, "/api/list") == 0 && is_get) {

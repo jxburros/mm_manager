@@ -1,5 +1,11 @@
 # Changelog
 
+### 0.5.3: control panel settings stay put
+
+- The control panel's settings (mm_manager's options, the page you were on, theme, hints) now also live in the working folder, in `.mm_gui/prefs/`, and the page reads them back when it opens. Before, only the browser kept them, and a browser keeps them per address. They were lost whenever mm_gui moved to the next free port, the page was opened as `localhost` instead of `127.0.0.1`, or another browser was used. mm_manager's options are shared by the admins; everything else is each account's own, and is removed with the account.
+- The SIP password now survives a reload: it stays in that browser tab until the tab is closed. It is still never written to disk.
+- `tests/test_gui_accounts.py` covers the new `/api/prefs` call.
+
 ### 0.5.2: accurate wording on the Elcotel formats
 
 - The Elcotel documentation and code comments no longer call the R94/S94/P94 support "clean room". That term means a documented process with separate people for reading the original and writing the code, which wasn't followed here. They now say what was done: a separate implementation written from elcotel-playground's published format description, with no code from that GPL-3.0 project copied or adapted. The two R94 details found here are marked as seen in only one sample file. No change to the programs.

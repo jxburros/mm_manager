@@ -920,6 +920,66 @@ function safeStorage(fn, fallback) {
     try { return fn(window.localStorage); } catch (e) { return fallback; }
 }
 
+/*
+ * Settings that last: mm_manager's options, where you were, the theme, hints.
+ * The browser keeps them (localStorage), but only for the address the page came
+ * from, and mm_gui's address changes when it moves to the next free port, or
+ * between 127.0.0.1 and localhost.  So with mm_gui they are also saved in the
+ * working folder (.mm_gui/prefs) and read back from there when the page opens.
+ * mm_manager's options are shared by the admins; the rest is each account's own.
+ */
+const PREF_KEYS = {
+    manager: ['mmTableEditor.manager'],
+    user: ['mmTableEditor.nav', 'mmTableEditor.theme', 'mmTableEditor.hints', 'mmTableEditor.about', 'mmTableEditor.onboarded'],
+};
+const prefSync = { ready: false, dirty: new Set(), timer: 0 };
+const prefScope = key => PREF_KEYS.manager.includes(key) ? 'manager' : 'user';
+const prefGet = (key, fallback = null) => safeStorage(s => { const v = s.getItem(key); return v === null ? fallback : v; }, fallback);
+function prefSet(key, value) {
+    if (prefGet(key) === value) return;
+    safeStorage(s => s.setItem(key, value));
+    if (!server || !prefSync.ready) return;
+    prefSync.dirty.add(prefScope(key));
+    clearTimeout(prefSync.timer);
+    prefSync.timer = setTimeout(() => flushPrefs(), 400);
+}
+function prefBody(scope) {
+    const o = {};
+    for (const k of PREF_KEYS[scope]) { const v = prefGet(k); if (v !== null) o[k] = v; }
+    return JSON.stringify(o);
+}
+/* Send the changed settings to mm_gui.  keepalive lets the last one out as the page goes away. */
+async function flushPrefs(keepalive = false) {
+    clearTimeout(prefSync.timer);
+    if (!server || !prefSync.ready) return;
+    const scopes = [...prefSync.dirty].filter(sc => sc === 'user' || isAdmin());
+    prefSync.dirty.clear();
+    for (const sc of scopes) {
+        try { await api(`/api/prefs?scope=${sc}`, { method: 'PUT', body: prefBody(sc), keepalive }); }
+        catch (e) { prefSync.dirty.add(sc); if (!keepalive) toast(`couldn't save the settings: ${e.message}`, 'error'); }
+    }
+}
+/* Signed in: read this account's settings (and, for an admin, mm_manager's) from mm_gui. */
+async function loadPrefs() {
+    prefSync.ready = false;
+    prefSync.dirty.clear();
+    for (const sc of ['user', ...(isAdmin() ? ['manager'] : [])]) {
+        let saved = null;
+        try {
+            const r = await api(`/api/prefs?scope=${sc}`);
+            if (r.prefs) { try { saved = JSON.parse(r.prefs); } catch (e) { saved = null; } }
+        } catch (e) { continue; }
+        if (saved && typeof saved === 'object') {
+            for (const k of PREF_KEYS[sc]) if (typeof saved[k] === 'string') safeStorage(s => s.setItem(k, saved[k]));
+        }
+        /* Saved here for the first time: start from what this browser had. */
+        if (!saved || PREF_KEYS[sc].some(k => typeof saved[k] !== 'string' && prefGet(k) !== null)) prefSync.dirty.add(sc);
+    }
+    prefSync.ready = true;
+    applyPrefs();
+    if (prefSync.dirty.size) await flushPrefs();
+}
+
 function download(name, data, type = 'application/octet-stream') {
     const url = URL.createObjectURL(new Blob([data], { type }));
     const a = h('a', { href: url, download: name });
@@ -1868,10 +1928,10 @@ function setSession(token) {
     try { token ? sessionStorage.setItem('mmTableEditor.session', token) : sessionStorage.removeItem('mmTableEditor.session'); } catch (e) { /* private window */ }
 }
 
-async function api(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
+async function api(path, { method = 'GET', body, headers = {}, raw = false, keepalive = false } = {}) {
     let r;
     const auth = server.session ? { 'X-MM-Session': server.session } : {};
-    try { r = await fetch(path, { method, body, headers: { 'X-MM-Token': server.token, ...auth, ...headers }, cache: 'no-store' }); }
+    try { r = await fetch(path, { method, body, headers: { 'X-MM-Token': server.token, ...auth, ...headers }, cache: 'no-store', keepalive }); }
     catch (e) { throw new Error('the control panel isn\'t answering. Is mm_gui still running?'); }
     if (r.status === 401 && server.me && !path.startsWith('/api/login') && !path.startsWith('/api/password')) signedOut();
     if (raw && r.ok) return new Uint8Array(await r.arrayBuffer());
@@ -2976,8 +3036,17 @@ const MGR_DEFAULTS = {
     retries: '', callin: '', push: false,
     log: '', pcap: '', udp: false, verbose: 1, quiet: false, rating: false, shell: 'posix',
 };
-const mgr = { ...MGR_DEFAULTS, ...safeStorage(s => JSON.parse(s.getItem('mmTableEditor.manager') || '{}'), {}) };
-const saveMgr = () => safeStorage(s => s.setItem('mmTableEditor.manager', JSON.stringify({ ...mgr, sipPass: '' })));
+/*
+ * The SIP password is never written to disk: it stays in this tab (sessionStorage),
+ * so a reload keeps it, and it is gone once the tab is closed.
+ */
+const SIP_PASS_KEY = 'mmTableEditor.sipPass';
+const readMgr = () => { try { return JSON.parse(prefGet('mmTableEditor.manager') || '{}') || {}; } catch (e) { return {}; } };
+const mgr = { ...MGR_DEFAULTS, ...readMgr(), sipPass: (() => { try { return sessionStorage.getItem(SIP_PASS_KEY) || ''; } catch (e) { return ''; } })() };
+const saveMgr = () => {
+    prefSet('mmTableEditor.manager', JSON.stringify({ ...mgr, sipPass: '' }));
+    try { mgr.sipPass ? sessionStorage.setItem(SIP_PASS_KEY, mgr.sipPass) : sessionStorage.removeItem(SIP_PASS_KEY); } catch (e) { /* private window */ }
+};
 
 function quoteArg(s, shell) {
     if (s === '') return shell === 'posix' ? "''" : '""';
@@ -3108,7 +3177,7 @@ function mgrSection(host, section) {
                         field('sipUser', 'SIP user / extension', { placeholder: 'e.g. 1000' }),
                         field('sipHost', 'Registrar', { placeholder: 'e.g. pbx.example.com' }),
                         field('sipHostPort', 'Registrar port', { placeholder: 'default 5060', inputmode: 'numeric' }),
-                        field('sipPass', 'Password', { type: 'password', autocomplete: 'new-password', hint: 'Never stored by this page.' }),
+                        field('sipPass', 'Password', { type: 'password', autocomplete: 'new-password', hint: 'Kept only until this tab is closed: never saved to disk.' }),
                         field('authUser', 'Auth user', { placeholder: 'same as user' }),
                         field('domain', 'Domain', { placeholder: 'same as registrar' }),
                         field('expires', 'Registration expiry (s)', { placeholder: 'default 300', inputmode: 'numeric' })),
@@ -4113,7 +4182,7 @@ const VIEW_TIPS = {
     bytes: 'Type two hex digits per byte and the cursor moves on by itself. Hover a byte to see which field it belongs to.',
 };
 
-let hintsOn = safeStorage(s => s.getItem('mmTableEditor.hints'), null) !== 'off';
+let hintsOn = prefGet('mmTableEditor.hints') !== 'off';
 
 const TIP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-7l-5 4v-4H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><circle cx="8" cy="10.5" r="1.4" fill="var(--paper)"/><circle cx="12" cy="10.5" r="1.4" fill="var(--paper)"/><circle cx="16" cy="10.5" r="1.4" fill="var(--paper)"/></svg>';
 
@@ -4122,7 +4191,7 @@ function tip(...kids) {
 }
 
 /* Whether the "what it does" tips are unfolded, the same for every table. */
-let aboutOpen = safeStorage(s => s.getItem('mmTableEditor.about'), '') === 'open';
+let aboutOpen = prefGet('mmTableEditor.about', '') === 'open';
 
 function aboutTable(d) {
     const help = TABLE_HELP[d.code];
@@ -4131,7 +4200,7 @@ function aboutTable(d) {
         h('summary', null, h('strong', null, 'what it does: '), help.what, help.tips.length ? h('span', { class: 'more' }, ` · ${help.tips.length} tips`) : null),
         help.tips.length ? h('ul', null, help.tips.map(t => h('li', null, t))) : null);
     box.open = aboutOpen;
-    box.addEventListener('toggle', () => { aboutOpen = box.open; safeStorage(s => s.setItem('mmTableEditor.about', aboutOpen ? 'open' : '')); });
+    box.addEventListener('toggle', () => { aboutOpen = box.open; prefSet('mmTableEditor.about', aboutOpen ? 'open' : ''); });
     return box;
 }
 
@@ -4140,7 +4209,7 @@ function applyHints() {
     const btn = $('#hints-btn');
     btn.textContent = `hints: ${hintsOn ? 'on' : 'off'}`;
     btn.setAttribute('aria-pressed', hintsOn ? 'true' : 'false');
-    safeStorage(s => s.setItem('mmTableEditor.hints', hintsOn ? 'on' : 'off'));
+    prefSet('mmTableEditor.hints', hintsOn ? 'on' : 'off');
 }
 
 /* =====================================================================
@@ -4347,7 +4416,7 @@ function renderHelp() {
 
 function showWelcome() {
     const dlg = $('#dialog');
-    safeStorage(s => s.setItem('mmTableEditor.onboarded', '1'));
+    prefSet('mmTableEditor.onboarded', '1');
     const go = fn => () => { dlg.close(); if (fn) fn(); };
     dlg.replaceChildren(h('div', { class: 'welcome' },
         h('div', { class: 'overline' }, 'welcome'),
@@ -4503,7 +4572,7 @@ function endTour(keepPractice = true) {
         if (nav.view === 'global' || nav.view === 'manager') renderView();
     }
     if (!keepPractice) removePractice();
-    safeStorage(s => s.setItem('mmTableEditor.onboarded', '1'));
+    prefSet('mmTableEditor.onboarded', '1');
 }
 
 function tourKeys(e) {
@@ -4600,10 +4669,13 @@ function placeTour() {
 const VIEWS = ['phones', 'global', 'manager', 'help'];
 /* What is on screen. Saved, so a reload comes back to the same place. */
 const nav = Object.assign({ view: 'phones', phoneSection: 'overview', global: 'shared:display', sharedFolder: 'default', manager: 'run',
-    bulkSection: 'callin', table: {} }, safeStorage(s => JSON.parse(s.getItem('mmTableEditor.nav') || '{}'), {}));
+    bulkSection: 'callin', table: {} });
+const NAV_DEFAULTS = { ...nav, table: {} };
+const readNav = () => { try { return JSON.parse(prefGet('mmTableEditor.nav') || '{}') || {}; } catch (e) { return {}; } };
+Object.assign(nav, readNav());
 nav.checked = new Set();
 nav.bulk = false;
-const saveNav = () => safeStorage(s => s.setItem('mmTableEditor.nav', JSON.stringify({ ...nav, checked: undefined, bulk: undefined })));
+const saveNav = () => prefSet('mmTableEditor.nav', JSON.stringify({ ...nav, checked: undefined, bulk: undefined }));
 /* The page being shown: its scope (for source badges) and what to do after an edit. */
 const page = { scope: null, onEdit: null };
 
@@ -5128,6 +5200,7 @@ function renderSignIn(host) {
 function signedOut(quiet = false) {
     if (!server.me) return;
     server.me = null;
+    prefSync.ready = false;
     setSession('');
     clearTimeout(pollTimer);
     applyRole();
@@ -5138,6 +5211,7 @@ function signedOut(quiet = false) {
 
 async function signOut() {
     if (state.files.some(f => !f.practice && isDirty(f)) && !confirm('You have unsaved table changes. Sign out anyway?')) return;
+    await flushPrefs();
     try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* signed out anyway */ }
     server.me = { ...server.me };   /* so signedOut() runs */
     signedOut(true);
@@ -5342,6 +5416,7 @@ async function removeAccount(a) {
 
 /* Signed in (or no accounts): load what this account can see. */
 async function startSignedIn() {
+    await loadPrefs();
     applyRole();
     if (!viewsAllowed().includes(nav.view)) nav.view = 'phones';
     renderAll();
@@ -5485,11 +5560,27 @@ function renderAll() {
     renderView();
 }
 
+const THEMES = ['auto', 'light', 'dark'];
+let theme = 'auto';
+const readTheme = () => { const t = prefGet('mmTableEditor.theme'); return THEMES.includes(t) ? t : 'auto'; };
+
+/* Settings just read from mm_gui: put them to use. */
+function applyPrefs() {
+    const pass = mgr.sipPass;
+    Object.assign(mgr, MGR_DEFAULTS, readMgr(), { sipPass: pass });
+    Object.assign(nav, NAV_DEFAULTS, readNav(), { checked: nav.checked, bulk: nav.bulk });
+    hintsOn = prefGet('mmTableEditor.hints') !== 'off';
+    aboutOpen = prefGet('mmTableEditor.about', '') === 'open';
+    theme = readTheme();
+    applyTheme(theme);
+    applyHints();
+}
+
 function applyTheme(t) {
     if (t === 'auto') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', t);
     $('#theme-btn').textContent = `theme: ${t}`;
-    safeStorage(s => s.setItem('mmTableEditor.theme', t));
+    prefSet('mmTableEditor.theme', t);
 }
 
 function init() {
@@ -5537,11 +5628,11 @@ function init() {
         if (state.files.some(f => !f.practice && isDirty(f)) || (roms.rows.length && romCsv() !== roms.orig)) { e.preventDefault(); e.returnValue = ''; }
     });
 
-    const themes = ['auto', 'light', 'dark'];
-    let theme = safeStorage(s => s.getItem('mmTableEditor.theme'), null) || 'auto';
-    if (!themes.includes(theme)) theme = 'auto';
+    theme = readTheme();
     applyTheme(theme);
-    $('#theme-btn').addEventListener('click', () => { theme = themes[(themes.indexOf(theme) + 1) % themes.length]; applyTheme(theme); });
+    $('#theme-btn').addEventListener('click', () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]; applyTheme(theme); });
+    /* A setting changed in the last moment before a reload still gets to mm_gui. */
+    window.addEventListener('pagehide', () => { if (prefSync.dirty.size) flushPrefs(true); });
 
     $('#tour-btn').addEventListener('click', startTour);
     $('#hints-btn').addEventListener('click', () => {
