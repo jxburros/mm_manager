@@ -1,0 +1,103 @@
+name: CI
+
+# Build, test and package on every platform the release ships, for each pull
+# request and push to main, so a break shows up here rather than in a release
+# run.  The jobs mirror release.yml's build steps.
+'on':
+  pull_request:
+    branches:
+    - main
+  push:
+    branches:
+    - main
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  build:
+    name: Build & test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report every platform, not just the first to fail.
+      fail-fast: false
+      matrix:
+        include:
+        - name: Linux x64, GCC
+          os: ubuntu-latest
+          package_tag: Linux
+          cmake_arg: ''
+        - name: Linux x64, Clang
+          os: ubuntu-latest
+          package_tag: ''
+          cmake_arg: -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+        - name: macOS
+          os: macos-latest
+          package_tag: Darwin
+          cmake_arg: ''
+        - name: Windows x64
+          os: windows-latest
+          package_tag: win64
+          cmake_arg: ''
+        - name: Windows x86
+          os: windows-latest
+          package_tag: win32
+          cmake_arg: -A Win32
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Install NSIS (Windows)
+      if: runner.os == 'Windows' && matrix.package_tag != ''
+      shell: pwsh
+      run: |
+        if (-not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe") -and -not (Test-Path "$env:ProgramFiles\NSIS\makensis.exe")) {
+          choco install nsis -y --no-progress
+        }
+    - name: Configure CMake
+      shell: bash
+      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_arg }}
+    - name: Build
+      shell: bash
+      run: cmake --build build --config Release --parallel
+    - name: Run tests
+      working-directory: ./build
+      shell: bash
+      run: ctest -C Release --output-on-failure
+    - name: Package with CPack
+      if: matrix.package_tag != ''
+      working-directory: ./build
+      shell: bash
+      run: cpack -C Release
+    - name: Check the packages the release needs
+      if: matrix.package_tag != ''
+      shell: bash
+      run: |
+        PY=$(command -v python3 || command -v python)
+        "$PY" .github/scripts/check_packages.py build ${{ matrix.package_tag }}
+    - name: Keep the packages
+      if: matrix.package_tag != ''
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: packages-${{ matrix.package_tag }}
+        path: |-
+          build/mmumblephone-*.zip
+          build/mmumblephone-*.exe
+          build/mmumblephone-*.tar.gz
+        if-no-files-found: error
+        retention-days: 7
+
+  pages:
+    name: Control panel pages
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - name: Syntax-check the pages' JavaScript
+      run: python3 .github/scripts/check_page_scripts.py html/*.html

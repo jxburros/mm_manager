@@ -930,7 +930,8 @@ function safeStorage(fn, fallback) {
  */
 const PREF_KEYS = {
     manager: ['mmTableEditor.manager'],
-    user: ['mmTableEditor.nav', 'mmTableEditor.theme', 'mmTableEditor.hints', 'mmTableEditor.about', 'mmTableEditor.onboarded'],
+    user: ['mmTableEditor.nav', 'mmTableEditor.theme', 'mmTableEditor.hints', 'mmTableEditor.about', 'mmTableEditor.onboarded',
+        'mmTableEditor.previews'],
 };
 const prefSync = { ready: false, dirty: new Set(), timer: 0 };
 const prefScope = key => PREF_KEYS.manager.includes(key) ? 'manager' : 'user';
@@ -3257,6 +3258,8 @@ function mgrSection(host, section) {
 const jobs = {
     manager: { from: 0, text: '', running: false, started: false, stopping: false, exitCode: 0, title: '' },
     task: { from: 0, text: '', running: false, started: false, stopping: false, exitCode: 0, title: '', label: '', waiters: [], seq: 0 },
+    /* Installing an update (see the update center). */
+    update: { from: 0, text: '', running: false, started: false, stopping: false, exitCode: 0, title: '', label: 'installing the update', waiters: [], seq: 0 },
 };
 const LOG_KEEP = 200000;
 let modems = null;      /* last scan: [{ path, baud, ident }] */
@@ -3283,9 +3286,10 @@ async function pollLoop() {
     polling = true;
     const alive = await pollJob('manager');
     if (jobs.task.running || jobs.task.waiters.length) await pollJob('task');
+    if (jobs.update.running || jobs.update.waiters.length) await pollJob('update');
     polling = false;
     clearTimeout(pollTimer);
-    pollTimer = setTimeout(pollLoop, pollAgain ? 0 : !alive ? 4000 : (jobs.manager.running || jobs.task.running) ? 700 : 2500);
+    pollTimer = setTimeout(pollLoop, pollAgain ? 0 : !alive ? 4000 : (jobs.manager.running || jobs.task.running || jobs.update.running) ? 700 : 2500);
     pollAgain = false;
     $('#run-pill').classList.toggle('danger', !alive);
     if (!alive) $('#run-pill').textContent = 'control panel: not answering';
@@ -3305,11 +3309,11 @@ function drawJob(name) {
     const [label, cls] = jobState(name);
     document.querySelectorAll(`[data-job-log="${name}"]`).forEach(pre => {
         const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 24;
-        pre.textContent = j.text || (name === 'manager' ? 'mm_manager\'s output shows up here.' : 'Output from tools and generators shows up here.');
+        pre.textContent = j.text || (name === 'manager' ? 'mm_manager\'s output shows up here.' : name === 'update' ? 'How the update is going shows up here.' : 'Output from tools and generators shows up here.');
         if (stick) pre.scrollTop = pre.scrollHeight;
     });
     document.querySelectorAll(`[data-job-state="${name}"]`).forEach(el => { el.className = cls; el.textContent = label; });
-    document.querySelectorAll(`[data-job-title="${name}"]`).forEach(el => { el.textContent = j.title ? (name === 'task' && j.label ? j.label : j.title.split(/[\\/]/).pop()) : ''; });
+    document.querySelectorAll(`[data-job-title="${name}"]`).forEach(el => { el.textContent = j.title ? (name !== 'manager' && j.label ? j.label : j.title.split(/[\\/]/).pop()) : ''; });
     document.querySelectorAll(`[data-job-run="${name}"]`).forEach(el => { el.disabled = j.running; });
     document.querySelectorAll(`[data-job-stop="${name}"]`).forEach(el => { el.disabled = !j.running; });
     if (name === 'manager') {
@@ -3362,7 +3366,8 @@ function logCard(name, title, note, extra) {
         pre,
         h('div', { class: 'btns' },
             extra || null,
-            h('button', { class: 'btn', type: 'button', 'data-job-stop': name, disabled: !jobs[name].running, onclick: () => stopJob(name) }, 'stop'),
+            /* An update can't be stopped half way through putting its files in place. */
+            name === 'update' ? null : h('button', { class: 'btn', type: 'button', 'data-job-stop': name, disabled: !jobs[name].running, onclick: () => stopJob(name) }, 'stop'),
             h('button', { class: 'btn link', type: 'button', onclick: () => { jobs[name].text = ''; drawJob(name); } }, 'clear'),
             h('button', { class: 'btn link', type: 'button', onclick: () => download(`${name}-output.txt`, jobs[name].text, 'text/plain') }, 'save as text')));
     setTimeout(() => drawJob(name));
@@ -4690,7 +4695,7 @@ const GLOBAL_SECTIONS = () => [
     ['this control panel', [...(server ? [['accounts', 'accounts'], ['configurations', 'saved configurations'], ['generate', 'make tables from public data'],
         ['files', 'working folder']] : []), ['tablefiles', 'table files'], ...(server ? [['panel', 'about & quit']] : [])]],
 ];
-const MANAGER_SECTIONS = () => server ? [['run', 'run mm_manager'], ['records', 'records from all phones']] : [['run', 'command line']];
+const MANAGER_SECTIONS = () => server ? [['run', 'run mm_manager'], ['records', 'records from all phones'], ['updates', 'updates']] : [['run', 'command line']];
 
 /* Put the shared table list and editor back where they wait, before a page is cleared. */
 function park() {
@@ -5525,6 +5530,11 @@ function renderManagerView(host) {
         renderRecords();
         return;
     }
+    if (nav.manager === 'updates') {
+        main.append(h('div', { class: 'page-head' }, h('h1', null, 'updates')), h('div', { id: 'view-updates' }));
+        renderUpdates(!upd.info);
+        return;
+    }
     main.append(h('div', { class: 'page-head' }, h('h1', null, server ? 'run mm_manager' : 'command line')));
     const { warn } = buildCommand();
     const fix = warn.length ? h('div', { class: 'notice', style: 'margin:0 0 1.5rem' },
@@ -5533,6 +5543,166 @@ function renderManagerView(host) {
     main.append(...[fix, h('div', { class: 'two-col' },
         server ? runCard() : commandCard(),
         server ? commandCard() : h('div', null, tip('Run this from the folder that holds mm_manager and tables/. Or start mm_gui instead: this page then gets a start button and much more.')))].filter(Boolean));
+}
+
+/* =====================================================================
+ * Update center (mm_gui only): install a newer release from GitHub
+ * ===================================================================== */
+
+/*
+ * The releases come straight from GitHub's API (mm_gui says where to look).
+ * Only versions newer than this one are offered, and mm_gui checks that
+ * again before it installs anything: there's no going back to an older one.
+ */
+const upd = { info: null, releases: null, error: '', loading: false };
+const showPreviews = () => prefGet('mmTableEditor.previews') === 'on';
+
+function parseVersion(s) {
+    const m = /^v?(\d+)(?:\.(\d+)(?:\.(\d+))?)?(?:-([0-9A-Za-z.-]+))?$/.exec(String(s || ''));
+    return m ? { n: [+m[1], +(m[2] || 0), +(m[3] || 0)], pre: m[4] || null } : null;
+}
+/* Semantic version order: -1, 0 or 1; NaN if either isn't a version (as mm_gui's version_cmp()). */
+function versionCmp(a, b) {
+    const x = parseVersion(a), y = parseVersion(b);
+    if (!x || !y) return NaN;
+    for (let i = 0; i < 3; i++) if (x.n[i] !== y.n[i]) return x.n[i] < y.n[i] ? -1 : 1;
+    if (!x.pre || !y.pre) return (!x.pre) - (!y.pre);
+    const p = x.pre.split('.'), q = y.pre.split('.');
+    for (let i = 0; i < Math.max(p.length, q.length); i++) {
+        if (p[i] === undefined || q[i] === undefined) return p[i] === undefined ? -1 : 1;
+        const np = /^\d+$/.test(p[i]), nq = /^\d+$/.test(q[i]);
+        if (np && nq) { const d = BigInt(p[i]) - BigInt(q[i]); if (d) return d < 0n ? -1 : 1; }
+        else if (np !== nq) return np ? -1 : 1;
+        else if (p[i] !== q[i]) return p[i] < q[i] ? -1 : 1;
+    }
+    return 0;
+}
+
+/* Ask mm_gui about this copy, then GitHub for the releases newer than it. */
+async function loadUpdates() {
+    upd.loading = true; upd.error = '';
+    renderUpdates();
+    try {
+        upd.info = await api('/api/update');
+        const r = await fetch(upd.info.releases, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+        if (!r.ok) throw new Error(r.status === 403 ? 'GitHub is limiting how often it is asked: try again in a while' : `GitHub answered ${r.status}`);
+        const list = await r.json();
+        if (!Array.isArray(list)) throw new Error('GitHub sent something unexpected');
+        upd.releases = list.filter(rel => !rel.draft).map(rel => {
+            const version = String(rel.tag_name || '').replace(/^v/, '');
+            const names = (rel.assets || []).map(a => a.name);
+            const asset = upd.info.asset.replace('{version}', version);
+            return { version, rel, preview: !!rel.prerelease, hasPackage: names.includes(asset) && names.includes(upd.info.sums), asset };
+        }).filter(x => versionCmp(x.version, upd.info.current) > 0).sort((a, b) => versionCmp(b.version, a.version));
+    } catch (e) {
+        upd.error = /fetch/i.test(e.message) ? 'couldn\'t reach GitHub: is this computer on the internet?' : e.message;
+        if (!upd.releases) upd.releases = [];
+    }
+    upd.loading = false;
+    renderUpdates();
+}
+
+async function installUpdate(x) {
+    const how = upd.info.installer
+        ? 'mm_gui downloads its installer and checks it. Restarting then closes the control panel and starts the installer.'
+        : 'mm_gui downloads it, checks it, installs it over this one (keeping your tables, settings and records), and then restarts.';
+    if (!confirm(`Update mmumblephone ${upd.info.current} to ${x.version}?\n\n${how}\n\nThere is no going back to ${upd.info.current} from here afterwards.`)) return;
+    const j = jobs.update;
+    j.text = '';
+    try { await api(`/api/update/start?version=${enc(x.version)}`, { method: 'POST' }); }
+    catch (e) { toast(`the update didn't start: ${e.message}`, 'error'); return; }
+    const done = new Promise(resolve => j.waiters.push({ seq: ++j.seq, fn: resolve }));
+    j.running = true;
+    drawJob('update');
+    renderUpdates();
+    pollLoop();
+    await done;
+    if (j.exitCode === 0) toast(upd.info.installer ? 'the installer is ready' : `${x.version} is installed — restart to start using it`);
+    else toast('the update didn\'t finish — see what happened below', 'error');
+    try { upd.info = await api('/api/update'); } catch (e) { /* keep what we had */ }
+    renderUpdates();
+}
+
+/* Finish the update: mm_gui restarts as the new version (or runs the installer), and this page reloads from it. */
+async function restartForUpdate() {
+    const installer = upd.info && upd.info.ready === 'installer';
+    await flushPrefs();
+    try { await api('/api/update/restart', { method: 'POST' }); }
+    catch (e) { toast(`couldn't restart: ${e.message}`, 'error'); return; }
+    clearTimeout(pollTimer);
+    const note = h('p', null, installer ? 'The installer is starting: Windows may ask to let it make changes. When it has finished, start the control panel again.'
+        : 'The control panel is restarting as the new version. This page reloads by itself in a moment.');
+    document.body.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'empty' }, h('div', { class: 'bubble teal' },
+        h('p', null, h('strong', null, installer ? 'the installer is running.' : 'restarting…')), note))));
+    if (installer) return;
+    /* The new mm_gui serves the page with a new token: reload once it does. */
+    for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+            const t = await (await fetch('/', { cache: 'no-store' })).text();
+            const m = /name="mm-gui-token" content="([0-9a-f]+)"/.exec(t);
+            if (m && m[1] !== server.token) { location.reload(); return; }
+        } catch (e) { /* not back yet */ }
+    }
+    note.textContent = 'The control panel hasn\'t come back. Start mm_gui again, then reload this page.';
+}
+
+function renderUpdates(fetchFirst = false) {
+    const host = $('#view-updates');
+    if (!host) return;
+    if (fetchFirst && !upd.loading) { loadUpdates(); return; }
+    const info = upd.info || {};
+    const busy = jobs.update.running;
+    host.replaceChildren();
+
+    const here = h('div', { class: 'card raised' },
+        h('h3', null, 'this copy'),
+        h('p', null, info.current ? `mmumblephone ${info.current}` : 'asking mm_gui…'),
+        info.updatable ? h('p', { class: 'meta', style: 'word-break:break-all' },
+            info.installer ? `installed in ${info.folder}: updates use the Windows installer` : `installed in ${info.folder}`) : null,
+        info.current && !info.updatable ? h('div', { class: 'notice' }, h('p', null, h('strong', null, 'can\'t update from here: '), info.why)) : null,
+        h('p', { class: 'meta' }, 'Updates only go forward: versions older than this one aren\'t offered, and mm_gui won\'t install them. ',
+            'Your tables, settings, accounts and records stay as they are.'),
+        h('div', { class: 'btns', style: 'margin-top:0.75rem' },
+            h('button', { class: 'btn', type: 'button', disabled: upd.loading, onclick: loadUpdates }, upd.loading ? 'checking…' : 'check again'),
+            info.page ? h('a', { class: 'btn link', href: info.page, target: '_blank', rel: 'noopener' }, 'all releases on GitHub') : null));
+
+    const ready = info.ready ? h('div', { class: 'bubble yellow', style: 'margin-bottom:1rem' },
+        h('p', null, h('strong', null, info.ready === 'installer' ? 'the installer is downloaded and checked. ' : 'the update is installed. '),
+            info.ready === 'installer' ? 'Restarting closes the control panel (and stops mm_manager) and starts it.' : 'Restart the control panel to start using it. mm_manager must be stopped first.'),
+        h('div', { class: 'btns' }, h('button', { class: 'btn primary', type: 'button', disabled: busy, onclick: restartForUpdate },
+            info.ready === 'installer' ? 'run the installer' : 'restart now'))) : null;
+
+    const previews = h('input', { type: 'checkbox', checked: showPreviews() });
+    previews.addEventListener('change', () => { prefSet('mmTableEditor.previews', previews.checked ? 'on' : 'off'); renderUpdates(); });
+    const shown = (upd.releases || []).filter(x => !x.preview || showPreviews());
+    const hiddenPreviews = (upd.releases || []).length - shown.length;
+    const list = h('div', { class: 'card' },
+        h('h3', null, 'newer versions'),
+        h('label', { class: 'check', style: 'margin-bottom:0.75rem' }, previews, 'show previews (test versions, before they are stable)'),
+        upd.error ? h('div', { class: 'notice' }, h('p', null, h('strong', null, 'couldn\'t check: '), upd.error)) : null,
+        upd.loading && !upd.releases ? h('p', { class: 'meta' }, 'checking GitHub…') : null,
+        upd.releases && !shown.length && !upd.error ? h('p', null, h('strong', null, 'you have the newest version. '),
+            hiddenPreviews ? `(${hiddenPreviews} newer preview${hiddenPreviews > 1 ? 's' : ''} hidden.)` : '') : null,
+        ...shown.map((x, i) => {
+            const date = x.rel.published_at ? new Date(x.rel.published_at).toLocaleDateString() : '';
+            const can = info.updatable && x.hasPackage && !busy && !info.ready;
+            return h('div', { class: 'release', style: 'border-top:2px solid var(--line);padding:0.75rem 0' },
+                h('div', { class: 'section-title' },
+                    h('h3', { style: 'margin:0' }, x.version),
+                    i === 0 ? h('span', { class: 'badge live' }, 'newest') : null,
+                    x.preview ? h('span', { class: 'badge pink' }, 'preview') : null,
+                    h('span', { class: 'meta' }, [x.rel.name && x.rel.name !== x.rel.tag_name ? x.rel.name : '', date].filter(Boolean).join(' · '))),
+                x.rel.body ? h('details', null, h('summary', null, 'what\'s new'),
+                    h('div', { style: 'white-space:pre-wrap;margin-top:0.5rem' }, x.rel.body)) : null,
+                !x.hasPackage ? h('p', { class: 'meta' }, `This release has no package for this computer (${x.asset}).`) : null,
+                h('div', { class: 'btns', style: 'margin-top:0.5rem' },
+                    h('button', { class: 'btn' + (i === 0 ? ' primary' : ''), type: 'button', disabled: !can, onclick: () => installUpdate(x) }, `update to ${x.version}`),
+                    x.rel.html_url ? h('a', { class: 'btn link', href: x.rel.html_url, target: '_blank', rel: 'noopener' }, 'release page') : null));
+        }));
+
+    host.append(...[ready, h('div', { class: 'two-col' }, h('div', null, here, list),
+        logCard('update', 'installing', 'Each step of the update: download, checksum, unpack, a test run of the new version, and the install.'))].filter(Boolean));
 }
 
 function commandCard() {

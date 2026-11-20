@@ -54,7 +54,7 @@ A rail on the left has four places:
 
 * **phones**: every payphone, by its terminal ID. Pick one for its *overview* (name, ID, how often it calls in, whether its last update went through, saved configurations), its settings grouped by what they do (display & messages, features & hours, prices, free/blocked/speed-dial numbers, local & long distance, cards & carriers, coins & cash box, advanced), and its *records*. Each setting is marked *shared* or *this phone only*: change a shared one here and the phone gets its own copy, which *go back to the shared version* removes again. Tick two or more phones and press *edit together* to change the same fields on all of them, or their call-in schedule, while each keeps its other settings. See [several payphones](#several-payphones-updates-and-call-ins).
 * **global**: the same setting groups for every phone, with a switch to give one model (coin, card-only, desk…) its own version, and a list of which phones get each file. Then mm_manager's own options (connection, with a serial modem scan; numbers & codes; calling in & updates; sending tables; logs), the control ROM list (`config/control_rom_versions.csv`), saved configurations, the Python table generators, the working folder (download, upload, delete, turn a `.dlog` transcript into a `.pcap`), every table file folder by folder, and *quit the control panel*.
-* **manager**: start and stop mm_manager and watch its output, and the records from every phone, read from `mm_manager.db`. It keeps running when you close the page; the button at the top shows whether it is running.
+* **manager**: start and stop mm_manager and watch its output, the records from every phone, read from `mm_manager.db`, and [updates](#updates). It keeps running when you close the page; the button at the top shows whether it is running.
 * **help**: the guide.
 
 With [accounts](#accounts-admins-and-users) on, a user only gets **phones** (just the ones given to them) and **help**.
@@ -70,8 +70,24 @@ The welcome screen, tour and help tab cover all of this.
 | `-H <file>` | found automatically | The `table_editor.html` to serve |
 | `-L <address>` | | Also answer other computers on this IPv4 address of this computer (`0.0.0.0` for all of them). Needs accounts; see [accounts](#accounts-admins-and-users). |
 | `-n` | | Don't open a browser |
+| `-V` | | Print the version and exit |
 
 The control panel only listens on `127.0.0.1` unless it is started with `-L`. Each API request must carry a random token that is put in the page when it is served, and must be addressed to `127.0.0.1` or `localhost`, so other web sites can't use it. It only runs mm_manager, the `mm_*` tools next to it and the `generate_*.py` scripts, and only reads and writes files inside the working folder. The SIP password is passed to mm_manager in `MM_SIP_PASSWORD` and isn't saved. On Windows, *stop* ends mm_manager at once, rather than with ^C.
+
+### Updates
+
+**manager → updates** lists the releases on GitHub that are newer than the version you have, newest first, with what's new in each. Pick any of them and press *update to …*. Updates only go forward: older versions, and the one you have, aren't offered, and `mm_gui` refuses to install them. Previews (test versions) are hidden unless you tick *show previews*. Only admins can update, and mm_manager must be stopped first.
+
+Installing:
+
+1. `mm_gui` downloads the release's `SHA256SUMS.txt` and the package for this computer with `curl`, and checks the package against it. A package that doesn't match isn't installed.
+2. It unpacks the package with `tar` and runs the new `mm_gui -V` once, to be sure the new version starts on this computer.
+3. It puts the new files over the installed ones. If one can't be replaced, the ones already done are put back. Tables and config that came with the old version are kept as they are, since you may have changed them: only files they don't have yet are added. Your working folder (tables, settings, accounts, `mm_manager.db`) isn't touched.
+4. *restart now* restarts the control panel as the new version, on the same port, and the page reloads from it.
+
+Installed with the Windows installer (in Program Files), `mm_gui` downloads and checks the new installer instead, and *run the installer* closes the control panel and starts it. Start the control panel again when it has finished. A build from the source isn't updated from here: update the checkout and build it again.
+
+`curl` and `tar` come with Windows 10 and later, macOS and most Linux systems. The update center first appeared in 0.5.4, so earlier versions have to be updated by hand once.
 
 ### Accounts: admins and users
 

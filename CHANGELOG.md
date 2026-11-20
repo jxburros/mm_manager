@@ -1,5 +1,13 @@
 # Changelog
 
+### 0.5.4: update center, releases build on GCC 15
+
+- An update center in the control panel, under manager → updates. It lists the releases on GitHub that are newer than the installed version, and installs the one you pick: any newer version, never an older one or the same one (mm_gui checks this itself, not only the page). The package is checked against the release's `SHA256SUMS.txt` and the new mm_gui is test-run before anything is replaced; a failed install puts back what it changed. Installed tables and config you may have edited are kept. Then mm_gui restarts as the new version on the same port. Windows installs from the installer get the new installer instead. Previews are listed only on request. See README → Updates.
+- `mm_gui -V` prints the version.
+- CI (`.github/workflows/ci.yml`): every pull request and push to main is built and tested on Linux (GCC and Clang), macOS and Windows (x64 and x86), packaged where the release needs packages, and checked for each package the release requires. The browser pages' JavaScript is syntax-checked. Until now code was only built in a release run, which is how the GCC 15 break went unnoticed.
+- Tests: `tests/test_gui_update.py` (no downgrades, a damaged package is refused, an install keeps the user's config).
+- The release build failed on GitHub's current Linux runners: GCC 15 with glibc 2.43 warns about the bundled `third-party/sqlite3.c`, and warnings are errors. Warnings in that vendored file no longer stop the build; mmumblephone's own code still must build cleanly. 0.5.3 was never published, so 0.5.4 is the first release with its changes.
+
 ### 0.5.3: control panel settings stay put
 
 - The control panel's settings (mm_manager's options, the page you were on, theme, hints) now also live in the working folder, in `.mm_gui/prefs/`, and the page reads them back when it opens. Before, only the browser kept them, and a browser keeps them per address. They were lost whenever mm_gui moved to the next free port, the page was opened as `localhost` instead of `127.0.0.1`, or another browser was used. mm_manager's options are shared by the admins; everything else is each account's own, and is removed with the account.

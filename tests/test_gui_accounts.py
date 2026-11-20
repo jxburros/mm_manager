@@ -43,10 +43,10 @@ def free_port():
 class Panel:
     """One running mm_gui."""
 
-    def __init__(self, work):
+    def __init__(self, work, gui=None, env=None):
         self.port = free_port()
-        self.proc = subprocess.Popen([find_gui(), "-n", "-p", str(self.port), "-w", work, "-H", HTML],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.proc = subprocess.Popen([gui or find_gui(), "-n", "-p", str(self.port), "-w", work, "-H", HTML],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
         for _ in range(100):
             try:
                 status, body = self.request("GET", "/", raw=True)

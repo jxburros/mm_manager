@@ -508,7 +508,7 @@ typedef struct {
 #endif /* _WIN32 */
 } job_t;
 
-static job_t jobs[2] = { { .name = "manager" }, { .name = "task" } };
+static job_t jobs[3] = { { .name = "manager" }, { .name = "task" }, { .name = "update" } };
 
 static job_t *find_job(const char *name) {
     for (size_t i = 0; i < sizeof(jobs) / sizeof(jobs[0]); i++) {
@@ -2175,7 +2175,7 @@ static void api_run(request_t *req) {
 
     query_param(req, "job", name, sizeof(name));
     job = find_job(name);
-    if (job == NULL) {
+    if (job == NULL || job == &jobs[2]) {
         respond_error(req, 400, "unknown job");
         return;
     }
@@ -2643,6 +2643,870 @@ static void api_phone_rename(request_t *req) {
     respond_json(req, 200, &b);
 }
 
+/* ---------------------------------------------------------------------
+ * Updates
+ *
+ * The update center (manager -> updates) lists the releases published on
+ * GitHub that are newer than this one, and installs the one picked.  Only
+ * newer ones: mm_gui refuses to install an older or the same version.
+ *
+ * The install runs as its own job, "mm_gui --update <version> <folder>":
+ * it downloads this computer's package and SHA256SUMS.txt with curl, checks
+ * the package against it, unpacks it with tar, runs the new mm_gui once to
+ * be sure it starts on this computer, and only then puts the new files over
+ * the installed ones (undoing that if a file can't be replaced).  Tables and
+ * config installed with the old version are left as they are: only files
+ * they don't have yet are added.  The page then asks mm_gui to restart into
+ * the new version, on the same port.
+ *
+ * Installed with the Windows installer (it has an Uninstall.exe, or Program
+ * Files can't be written), the new installer is downloaded and checked
+ * instead, and started when the page asks for the restart.
+ *
+ * MM_UPDATE_API and MM_UPDATE_DOWNLOAD point the update center somewhere
+ * else (the tests use a local server).
+ * --------------------------------------------------------------------- */
+
+#define UPDATE_REPO         "jxburros/mm_manager"
+#define UPDATE_API          "https://api.github.com/repos/" UPDATE_REPO "/releases?per_page=100"
+#define UPDATE_DOWNLOAD     "https://github.com/" UPDATE_REPO "/releases/download"
+#define UPDATE_DIR          ".mm_gui/update"
+#define UPDATE_READY        UPDATE_DIR "/ready"
+#define UPDATE_SUMS         "SHA256SUMS.txt"
+
+#if defined(_WIN64)
+# define UPDATE_PLATFORM    "win64"
+#elif defined(_WIN32)
+# define UPDATE_PLATFORM    "win32"
+#elif defined(__APPLE__)
+# define UPDATE_PLATFORM    "Darwin"
+#elif defined(__linux__) && defined(__x86_64__)
+# define UPDATE_PLATFORM    "Linux"
+#endif
+#ifdef UPDATE_PLATFORM
+# define UPDATE_PLATFORM_NAME UPDATE_PLATFORM
+#else
+# define UPDATE_PLATFORM_NAME ""
+#endif
+#ifdef _WIN32
+# define UPDATE_ARCHIVE     ".zip"
+#else
+# define UPDATE_ARCHIVE     ".tar.gz"
+#endif /* _WIN32 */
+
+static int g_restart;               /* restart into the new version once the loop ends */
+
+static int dir_writable(const char *dir);
+
+/* snprintf() for paths and URLs, which may be cut short (they are checked before they are used). */
+static void path_printf(char *out, size_t len, const char *fmt, ...) {
+    va_list ap;
+
+    va_start(ap, fmt);
+    if (vsnprintf(out, len, fmt, ap) < 0) {
+        out[0] = '\0';
+    }
+    va_end(ap);
+}
+
+static const char *env_or(const char *name, const char *fallback) {
+    const char *v = getenv(name);
+
+    return (v && v[0]) ? v : fallback;
+}
+
+/*
+ * "1.2.3", "1.2" or "1.2.3-rc.1", with or without a leading "v".  Sets n[] and
+ * *pre (the part after "-", or NULL).  0 if it isn't a version.
+ */
+static int parse_version(const char *s, long n[3], const char **pre) {
+    char *end;
+
+    if (*s == 'v') {
+        s++;
+    }
+    n[0] = n[1] = n[2] = 0;
+    *pre = NULL;
+    for (int i = 0; i < 3; i++) {
+        if (!isdigit((unsigned char)*s)) {
+            return 0;
+        }
+        n[i] = strtol(s, &end, 10);
+        s    = end;
+        if (*s != '.') {
+            break;
+        }
+        if (i == 2) {
+            return 0;
+        }
+        s++;
+    }
+    if (*s == '-') {
+        if (*++s == '\0') {
+            return 0;
+        }
+        *pre = s;
+        for (; *s; s++) {
+            if (!isalnum((unsigned char)*s) && *s != '.' && *s != '-') {
+                return 0;
+            }
+        }
+    }
+    return *s == '\0';
+}
+
+/* Semantic version precedence of two pre-release parts ("rc.1" < "rc.2" < "rc.10"; none is highest). */
+static int cmp_pre(const char *a, const char *b) {
+    if (a == NULL || b == NULL) {
+        return (a == NULL) - (b == NULL);
+    }
+    for (;;) {
+        size_t la = strcspn(a, "."), lb = strcspn(b, ".");
+        int    na = la > 0 && strspn(a, "0123456789") >= la, nb = lb > 0 && strspn(b, "0123456789") >= lb;
+        int    c;
+
+        if (na && nb) {
+            while (la > 1 && *a == '0') { a++; la--; }
+            while (lb > 1 && *b == '0') { b++; lb--; }
+            c = (la != lb) ? (la < lb ? -1 : 1) : strncmp(a, b, la);
+        } else if (na != nb) {
+            c = na ? -1 : 1;    /* numbers come before words */
+        } else {
+            c = strncmp(a, b, la < lb ? la : lb);
+            if (c == 0 && la != lb) {
+                c = la < lb ? -1 : 1;
+            }
+        }
+        if (c != 0) {
+            return c < 0 ? -1 : 1;
+        }
+        a += la;
+        b += lb;
+        if (*a == '\0' || *b == '\0') {
+            return (*a != '\0') - (*b != '\0');
+        }
+        a++;
+        b++;
+    }
+}
+
+/* -1, 0 or 1 as a is older than, the same as or newer than b; -2 if either isn't a version. */
+static int version_cmp(const char *a, const char *b) {
+    long        na[3], nb[3];
+    const char *pa, *pb;
+
+    if (!parse_version(a, na, &pa) || !parse_version(b, nb, &pb)) {
+        return -2;
+    }
+    for (int i = 0; i < 3; i++) {
+        if (na[i] != nb[i]) {
+            return na[i] < nb[i] ? -1 : 1;
+        }
+    }
+    return cmp_pre(pa, pb);
+}
+
+/* This computer's package of a version, e.g. mmumblephone-0.6.0-Linux.tar.gz. */
+static void update_asset(char *out, size_t len, const char *version, int installer) {
+#ifdef UPDATE_PLATFORM
+    snprintf(out, len, "mmumblephone-%s-%s%s", version, UPDATE_PLATFORM, installer ? ".exe" : UPDATE_ARCHIVE);
+#else
+    (void)version;
+    (void)installer;
+    copy_str(out, len, "");
+#endif /* UPDATE_PLATFORM */
+}
+
+/*
+ * The folder the release package was unpacked or installed into: the one with
+ * bin/ (where this mm_gui is) and share/mm_manager/.  NULL if this copy can be
+ * updated (and *installer says whether that's through the Windows installer),
+ * otherwise why not.
+ */
+static const char *update_prefix(char *out, size_t len, int *installer) {
+    static char why[PATH_LEN + 128];
+    char        test[PATH_LEN];
+    const char *base = g_bindir;
+
+    *installer = 0;
+#ifndef UPDATE_PLATFORM
+    (void)out; (void)len; (void)test; (void)base;
+    return "there's no release package for this kind of computer, so update it from the source";
+#else
+    for (const char *c = g_bindir; *c; c++) {
+        if (*c == '/' || *c == '\\') {
+            base = c + 1;
+        }
+    }
+    copy_str(out, len, g_bindir);
+    dir_name(out);
+    join_path(test, sizeof(test), out, "share/mm_manager");
+    if (strcmp(base, "bin") != 0 || !is_dir(test)) {
+        return "this copy of mm_gui wasn't installed from a release package (it is a build, not in an install's bin folder), "
+               "so update it from the source";
+    }
+# ifdef _WIN32
+    join_path(test, sizeof(test), out, "Uninstall.exe");
+    if (is_file(test) || !dir_writable(g_bindir)) {
+        *installer = 1;
+        return NULL;
+    }
+# endif /* _WIN32 */
+    if (!dir_writable(g_bindir)) {
+        snprintf(why, sizeof(why), "mm_gui can't write to %s: run it as a user who can, or install the new version yourself", out);
+        return why;
+    }
+    return NULL;
+#endif /* UPDATE_PLATFORM */
+}
+
+/* What a finished update is waiting for: "restart", "installer <path>", or "" for nothing. */
+static void update_ready(char *out, size_t len) {
+    size_t n;
+    char  *data = (char *)read_file(UPDATE_READY, &n);
+
+    copy_str(out, len, data ? data : "");
+    out[strcspn(out, "\r\n")] = '\0';
+    free(data);
+}
+
+/* Run a program to the end, its output going to ours.  Its exit code, or -1. */
+static int run_wait(char **argv) {
+    fflush(stdout);
+    fflush(stderr);
+#ifdef _WIN32
+    {
+        STARTUPINFOA        si;
+        PROCESS_INFORMATION pi;
+        sbuf_t              cmd = { 0 };
+        DWORD               code = (DWORD)-1;
+
+        for (int i = 0; argv[i]; i++) {
+            if (i) sb_add(&cmd, " ", 1);
+            win_quote(&cmd, argv[i]);
+        }
+        memset(&si, 0, sizeof(si));
+        si.cb         = sizeof(si);
+        si.dwFlags    = STARTF_USESTDHANDLES;
+        si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        si.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
+        if (!CreateProcessA(NULL, cmd.s, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+            printf("couldn't start %s (Windows error %lu)\n", argv[0], GetLastError());
+            free(cmd.s);
+            return -1;
+        }
+        free(cmd.s);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        GetExitCodeProcess(pi.hProcess, &code);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return (int)code;
+    }
+#else
+    {
+        pid_t pid;
+        int   status, rc = posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ);
+
+        if (rc != 0) {
+            printf("couldn't start %s: %s\n", argv[0], strerror(rc));
+            return -1;
+        }
+        while (waitpid(pid, &status, 0) < 0) {
+            if (errno != EINTR) {
+                return -1;
+            }
+        }
+        return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    }
+#endif /* _WIN32 */
+}
+
+/* curl and tar.  On Windows, the ones that come with it (not, say, Git's tar, which can't unzip). */
+static void system_tool(char *out, size_t len, const char *name) {
+#ifdef _WIN32
+    const char *root = getenv("SystemRoot");
+
+    if (root) {
+        snprintf(out, len, "%s\\System32\\%s.exe", root, name);
+        if (is_file(out)) {
+            return;
+        }
+    }
+#endif /* _WIN32 */
+    copy_str(out, len, name);
+}
+
+static int download(const char *url, const char *to) {
+    char  curl[PATH_LEN];
+    char *argv[] = { curl, "-fsSL", "--retry", "3", "--connect-timeout", "30", "-o", (char *)to, (char *)url, NULL };
+
+    system_tool(curl, sizeof(curl), "curl");
+    printf("downloading %s\n", url);
+    if (run_wait(argv) != 0) {
+        printf("couldn't download it: is this computer on the internet, and is curl installed?\n");
+        return -1;
+    }
+    return 0;
+}
+
+static int sha256_file(const char *path, char hex[2 * MM_SHA256_LEN + 1]) {
+    FILE         *f = fopen(path, "rb");
+    unsigned char buf[65536];
+    uint8_t       sum[MM_SHA256_LEN];
+    mm_sha256_t   c;
+    size_t        n;
+
+    if (f == NULL) {
+        return -1;
+    }
+    mm_sha256_init(&c);
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+        mm_sha256_update(&c, buf, n);
+    }
+    fclose(f);
+    mm_sha256_final(&c, sum);
+    to_hex(hex, sum, sizeof(sum));
+    return 0;
+}
+
+/* The checksum SHA256SUMS.txt gives for name ("<hex>  <name>" or "<hex> *<name>" lines). */
+static int expected_sum(const char *sums, const char *name, char hex[2 * MM_SHA256_LEN + 1]) {
+    for (const char *line = sums; line && *line; line = strchr(line, '\n') ? strchr(line, '\n') + 1 : NULL) {
+        size_t      n = strcspn(line, " \t");
+        const char *file = line + n;
+        size_t      flen;
+
+        while (*file == ' ' || *file == '\t' || *file == '*') {
+            file++;
+        }
+        flen = strcspn(file, "\r\n");
+        if (n == 2 * MM_SHA256_LEN && flen == strlen(name) && strncmp(file, name, flen) == 0) {
+            for (size_t i = 0; i < n; i++) {
+                hex[i] = (char)tolower((unsigned char)line[i]);
+            }
+            hex[n] = '\0';
+            return 0;
+        }
+    }
+    return -1;
+}
+
+/* Download a release file and check it against the release's SHA256SUMS.txt. */
+static int fetch_checked(const char *base, const char *sums, const char *name, const char *to) {
+    char url[PATH_LEN], want[2 * MM_SHA256_LEN + 1], got[2 * MM_SHA256_LEN + 1];
+
+    if (expected_sum(sums, name, want) != 0) {
+        printf("%s has no checksum for %s, so it won't be installed.\n", UPDATE_SUMS, name);
+        return -1;
+    }
+    path_printf(url, sizeof(url), "%s/%s", base, name);
+    if (download(url, to) != 0) {
+        return -1;
+    }
+    if (sha256_file(to, got) != 0 || strcmp(got, want) != 0) {
+        printf("%s doesn't match its checksum (got %s, expected %s): it was damaged on the way, so it won't be installed.\n",
+               name, got, want);
+        (void)remove(to);
+        return -1;
+    }
+    printf("checked %s: SHA-256 %s matches\n", name, got);
+    return 0;
+}
+
+/* Call fn(ctx, name) for each entry of dir but "." and "..".  Stops at, and returns, the first non-zero. */
+typedef int (*entry_fn)(void *ctx, const char *name);
+
+static int for_each_entry(const char *dir, entry_fn fn, void *ctx) {
+    int rc = 0;
+#ifdef _WIN32
+    char             pattern[PATH_LEN];
+    WIN32_FIND_DATAA fd;
+    HANDLE           h;
+
+    join_path(pattern, sizeof(pattern), dir, "*");
+    h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    do {
+        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
+            rc = fn(ctx, fd.cFileName);
+        }
+    } while (rc == 0 && FindNextFileA(h, &fd));
+    FindClose(h);
+#else
+    DIR           *d = opendir(dir);
+    struct dirent *e;
+
+    if (d == NULL) {
+        return 0;
+    }
+    while (rc == 0 && (e = readdir(d)) != NULL) {
+        if (strcmp(e->d_name, ".") != 0 && strcmp(e->d_name, "..") != 0) {
+            rc = fn(ctx, e->d_name);
+        }
+    }
+    closedir(d);
+#endif /* _WIN32 */
+    return rc;
+}
+
+/* Delete a folder and everything in it. */
+static int rm_tree_entry(void *ctx, const char *name) {
+    char path[PATH_LEN];
+
+    join_path(path, sizeof(path), (const char *)ctx, name);
+    if (is_dir(path)) {
+        (void)for_each_entry(path, rm_tree_entry, path);
+        (void)do_rmdir(path);
+    } else {
+        (void)remove(path);
+    }
+    return 0;
+}
+
+static void rm_tree(const char *dir) {
+    char copy[PATH_LEN];
+
+    copy_str(copy, sizeof(copy), dir);
+    (void)for_each_entry(copy, rm_tree_entry, copy);
+    (void)do_rmdir(copy);
+}
+
+/* The new files are put in place one by one; each replaced one is kept as <name>.old until all are. */
+typedef struct {
+    const char *from;               /* the unpacked package */
+    const char *to;                 /* the install folder */
+    char        rel[PATH_LEN];      /* where in them we are, "" at the top */
+    sbuf_t      done;               /* "<0 or 1 had an old one><target>\n" for each file put in place */
+    int         files, kept;
+} install_t;
+
+/* Tables and config: the user's own by now, so only files they don't have are added. */
+static int keep_existing(const char *rel) {
+    return strncmp(rel, "share/mm_manager/tables/", 24) == 0 || strncmp(rel, "share/mm_manager/config/", 24) == 0;
+}
+
+static int install_entry(void *ctx, const char *name) {
+    install_t *in = (install_t *)ctx;
+    char       rel[PATH_LEN], src[PATH_LEN], dst[PATH_LEN], tmp[PATH_LEN + 8], old[PATH_LEN + 8];
+    size_t     len;
+    unsigned char *data;
+    int        had;
+    stat_t     st;
+
+    join_path(rel, sizeof(rel), in->rel, name);
+    join_path(src, sizeof(src), in->from, rel);
+    join_path(dst, sizeof(dst), in->to, rel);
+    if (is_dir(src)) {
+        char save[PATH_LEN];
+        int  rc;
+
+        copy_str(save, sizeof(save), in->rel);
+        copy_str(in->rel, sizeof(in->rel), rel);
+        rc = for_each_entry(src, install_entry, in);
+        copy_str(in->rel, sizeof(in->rel), save);
+        return rc;
+    }
+    if (keep_existing(rel) && is_file(dst)) {
+        in->kept++;
+        return 0;
+    }
+    snprintf(tmp, sizeof(tmp), "%s.new", dst);
+    snprintf(old, sizeof(old), "%s.old", dst);
+    data = read_file(src, &len);
+    if (data == NULL || mkdir_parents(dst) != 0 || write_file(tmp, (const char *)data, len) != 0) {
+        printf("couldn't write %s: %s\n", tmp, strerror(errno));
+        free(data);
+        (void)remove(tmp);
+        return -1;
+    }
+    free(data);
+#ifndef _WIN32
+    if (do_stat(src, &st) == 0) {
+        (void)chmod(tmp, st.st_mode & 0777);
+    }
+#else
+    (void)st;
+#endif /* _WIN32 */
+    (void)remove(old);
+    had = is_file(dst);
+    /* A running program can be renamed, not overwritten (on Windows, and its text on Linux). */
+    if (had && rename(dst, old) != 0) {
+        printf("couldn't replace %s: %s\n", dst, strerror(errno));
+        (void)remove(tmp);
+        return -1;
+    }
+    if (rename(tmp, dst) != 0) {
+        printf("couldn't replace %s: %s\n", dst, strerror(errno));
+        if (had) {
+            (void)rename(old, dst);
+        }
+        (void)remove(tmp);
+        return -1;
+    }
+    sb_printf(&in->done, "%d%s\n", had, dst);
+    in->files++;
+    return 0;
+}
+
+/* Undo the files put in place, or (rollback 0) just tidy away the old ones. */
+static void install_finish(install_t *in, int rollback) {
+    for (char *line = in->done.s; line && *line;) {
+        char *nl = strchr(line, '\n');
+        char  old[PATH_LEN + 8];
+
+        *nl = '\0';
+        snprintf(old, sizeof(old), "%s.old", line + 1);
+        if (rollback) {
+            (void)remove(line + 1);
+            if (line[0] == '1') {
+                (void)rename(old, line + 1);
+            }
+        } else {
+            (void)remove(old);  /* a running program's stays until the next start (update_cleanup) */
+        }
+        line = nl + 1;
+    }
+    free(in->done.s);
+    in->done.s = NULL;
+}
+
+/* Left over from an update: the old copies of programs that were running then. */
+static int cleanup_entry(void *ctx, const char *name) {
+    char   path[PATH_LEN];
+    size_t n = strlen(name);
+
+    if (n > 4 && strcmp(name + n - 4, ".old") == 0) {
+        join_path(path, sizeof(path), (const char *)ctx, name);
+        (void)remove(path);
+    }
+    return 0;
+}
+
+static void update_cleanup(void) {
+    (void)for_each_entry(g_bindir, cleanup_entry, g_bindir);
+}
+
+typedef struct {
+    const char *in;
+    char        found[256];
+} find_ctx_t;
+
+static int find_dir_entry(void *ctx, const char *name) {
+    find_ctx_t *fc = (find_ctx_t *)ctx;
+    char        path[PATH_LEN];
+
+    join_path(path, sizeof(path), fc->in, name);
+    if (is_dir(path)) {
+        copy_str(fc->found, sizeof(fc->found), name);
+        return 1;
+    }
+    return 0;
+}
+
+static int write_ready(const char *what) {
+    return write_file(UPDATE_READY, what, strlen(what));
+}
+
+/* mm_gui --update <version> <install folder>: run as the "update" job, from the working folder. */
+static int update_main(const char *version, const char *prefix) {
+    char        base[PATH_LEN], dir[PATH_LEN], sums_path[PATH_LEN], asset[256], file[PATH_LEN];
+    char        unpacked[PATH_LEN], top[PATH_LEN], newgui[PATH_LEN], check[PATH_LEN];
+    char       *sums;
+    size_t      len;
+    int         installer = 0;
+    const char *why;
+
+    setvbuf(stdout, NULL, _IONBF, 0);
+    printf("Updating mmumblephone %s to %s\n", CMAKE_VERSION_STR, version);
+    if (version_cmp(version, CMAKE_VERSION_STR) != 1) {
+        printf("%s isn't newer than %s: mmumblephone only updates to newer versions.\n", version, CMAKE_VERSION_STR);
+        return 1;
+    }
+    why = update_prefix(check, sizeof(check), &installer);
+    if (why != NULL || strcmp(check, prefix) != 0) {
+        printf("This copy can't be updated here: %s\n", why ? why : "the install folder changed");
+        return 1;
+    }
+    (void)remove(UPDATE_READY);
+    snprintf(dir, sizeof(dir), "%s/%s", UPDATE_DIR, version);
+    rm_tree(dir);
+    join_path(sums_path, sizeof(sums_path), dir, UPDATE_SUMS);
+    if (mkdir_parents(sums_path) != 0) {
+        printf("couldn't make %s: %s\n", dir, strerror(errno));
+        return 1;
+    }
+    snprintf(base, sizeof(base), "%s/v%s", env_or("MM_UPDATE_DOWNLOAD", UPDATE_DOWNLOAD), version);
+
+    printf("\nstep 1 of 4: the release's checksums\n");
+    path_printf(file, sizeof(file), "%s/%s", base, UPDATE_SUMS);
+    if (download(file, sums_path) != 0 || (sums = (char *)read_file(sums_path, &len)) == NULL) {
+        return 1;
+    }
+
+    update_asset(asset, sizeof(asset), version, installer);
+    printf("\nstep 2 of 4: the package for this computer, %s\n", asset);
+    join_path(file, sizeof(file), dir, asset);
+    if (fetch_checked(base, sums, asset, file) != 0) {
+        free(sums);
+        return 1;
+    }
+    free(sums);
+
+    if (installer) {
+        char ready[PATH_LEN + 16];
+
+        absolute(file, sizeof(file));
+        snprintf(ready, sizeof(ready), "installer %s\n", file);
+        if (write_ready(ready) != 0) {
+            printf("couldn't write %s: %s\n", UPDATE_READY, strerror(errno));
+            return 1;
+        }
+        printf("\nThe %s installer is ready. Restarting mm_gui starts it: mm_gui closes, and Windows asks to let the installer\n"
+               "make changes. Start the control panel again once it has finished.\n", version);
+        return 0;
+    }
+
+    printf("\nstep 3 of 4: unpack it and try the new mm_gui\n");
+    join_path(unpacked, sizeof(unpacked), dir, "unpacked");
+    (void)do_mkdir(unpacked);
+    {
+        char  tar[PATH_LEN];
+        char *argv[] = { tar, "-xf", file, "-C", unpacked, NULL };
+
+        system_tool(tar, sizeof(tar), "tar");
+        if (run_wait(argv) != 0) {
+            printf("couldn't unpack %s with tar.\n", asset);
+            return 1;
+        }
+    }
+    path_printf(top, sizeof(top), "%s/mmumblephone-%s-%s", unpacked, version, UPDATE_PLATFORM_NAME);
+    if (!is_dir(top)) {
+        /* The package's one top folder, whatever it is called. */
+        find_ctx_t fc = { unpacked, "" };
+
+        (void)for_each_entry(unpacked, find_dir_entry, &fc);
+        join_path(top, sizeof(top), unpacked, fc.found);
+    }
+    path_printf(newgui, sizeof(newgui), "%s/bin/mm_gui" EXE_SUFFIX, top);
+    if (!is_file(newgui)) {
+        printf("%s doesn't have bin/mm_gui" EXE_SUFFIX " where it should be, so it won't be installed.\n", asset);
+        return 1;
+    }
+    {
+        char *argv[] = { newgui, "-V", NULL };
+
+        if (run_wait(argv) != 0) {
+            printf("The new mm_gui doesn't run on this computer, so nothing was changed.\n");
+            return 1;
+        }
+    }
+
+    printf("\nstep 4 of 4: put the new files in %s\n", prefix);
+#ifndef _WIN32
+    signal(SIGINT, SIG_IGN);    /* from here it finishes, or puts everything back */
+#endif /* _WIN32 */
+    {
+        install_t in;
+
+        memset(&in, 0, sizeof(in));
+        in.from = top;
+        in.to   = prefix;
+        if (for_each_entry(top, install_entry, &in) != 0) {
+            install_finish(&in, 1);
+            printf("The update stopped part way, so the files it had changed were put back: %s is still installed.\n",
+                   CMAKE_VERSION_STR);
+            return 1;
+        }
+        install_finish(&in, 0);
+        printf("%d files installed", in.files);
+        if (in.kept) {
+            printf(", %d of your own tables and config files kept as they were", in.kept);
+        }
+        printf(".\n");
+    }
+    rm_tree(dir);
+    if (write_ready("restart\n") != 0) {
+        printf("couldn't write %s: %s\n", UPDATE_READY, strerror(errno));
+        return 1;
+    }
+    printf("\nmmumblephone %s is installed. Restart mm_gui to start using it.\n", version);
+    return 0;
+}
+
+/* GET /api/update (admins): this version, whether and how it can be updated, and where to look for releases. */
+static void api_update_info(request_t *req) {
+    sbuf_t      b = { 0 };
+    char        prefix[PATH_LEN], ready[PATH_LEN], asset[256];
+    int         installer;
+    const char *why = update_prefix(prefix, sizeof(prefix), &installer);
+
+    update_ready(ready, sizeof(ready));
+    update_asset(asset, sizeof(asset), "{version}", installer);
+    sb_puts(&b, "{\"ok\":true,\"current\":");
+    sb_jstr(&b, CMAKE_VERSION_STR);
+    sb_printf(&b, ",\"updatable\":%s,\"installer\":%s,\"why\":", why ? "false" : "true", installer ? "true" : "false");
+    sb_jstr(&b, why ? why : "");
+    sb_puts(&b, ",\"folder\":");
+    sb_jstr(&b, why ? "" : prefix);
+    sb_puts(&b, ",\"asset\":");
+    sb_jstr(&b, asset);
+    sb_puts(&b, ",\"sums\":\"" UPDATE_SUMS "\",\"releases\":");
+    sb_jstr(&b, env_or("MM_UPDATE_API", UPDATE_API));
+    sb_puts(&b, ",\"page\":\"https://github.com/" UPDATE_REPO "/releases\",\"ready\":");
+    sb_jstr(&b, strncmp(ready, "installer ", 10) == 0 ? "installer" : ready);
+    sb_puts(&b, "}");
+    respond_json(req, 200, &b);
+}
+
+static int manager_running(void) {
+    int running;
+
+    osal_mutex_lock(&jobs[0].lock);
+    running = jobs[0].running;
+    osal_mutex_unlock(&jobs[0].lock);
+    return running;
+}
+
+/* POST /api/update/start?version=X (admins): start installing version X, which must be newer. */
+static void api_update_start(request_t *req) {
+    char        version[64], prefix[PATH_LEN], self[PATH_LEN];
+    char       *argv[5];
+    int         installer, cmp;
+    const char *why, *err;
+
+    query_param(req, "version", version, sizeof(version));
+    cmp = version_cmp(version, CMAKE_VERSION_STR);
+    if (cmp == -2) {
+        respond_error(req, 400, "that isn't a version number");
+        return;
+    }
+    if (cmp != 1) {
+        respond_error(req, 409, "mmumblephone only updates to newer versions: that one isn't newer than this one");
+        return;
+    }
+    if ((why = update_prefix(prefix, sizeof(prefix), &installer)) != NULL) {
+        respond_error(req, 409, why);
+        return;
+    }
+    if (manager_running()) {
+        respond_error(req, 409, "stop mm_manager first (manager -> run): it is updated too");
+        return;
+    }
+    tool_path(self, sizeof(self), "mm_gui");
+    argv[0] = self;
+    argv[1] = "--update";
+    argv[2] = version;
+    argv[3] = prefix;
+    argv[4] = NULL;
+    if ((err = job_start(&jobs[2], argv, NULL, NULL)) != NULL) {
+        respond_error(req, 409, strcmp(err, "it is already running") == 0 ? "an update is already being installed" : err);
+        return;
+    }
+    respond_ok(req);
+}
+
+/* POST /api/update/restart (admins): finish an installed update by restarting (or running the installer). */
+static void api_update_restart(request_t *req) {
+    char ready[PATH_LEN];
+    int  running;
+
+    osal_mutex_lock(&jobs[2].lock);
+    running = jobs[2].running;
+    osal_mutex_unlock(&jobs[2].lock);
+    update_ready(ready, sizeof(ready));
+    if (running || ready[0] == '\0') {
+        respond_error(req, 409, running ? "the update is still being installed" : "there's no installed update waiting for a restart");
+        return;
+    }
+    if (manager_running()) {
+        respond_error(req, 409, "stop mm_manager first (manager -> run)");
+        return;
+    }
+    (void)remove(UPDATE_READY);
+#ifdef _WIN32
+    if (strncmp(ready, "installer ", 10) == 0) {
+        if ((INT_PTR)ShellExecuteA(NULL, "open", ready + 10, NULL, NULL, SW_SHOWNORMAL) <= 32) {
+            respond_error(req, 500, "couldn't start the installer");
+            return;
+        }
+        respond_ok(req);
+        printf("mm_gui: the installer is running: start the control panel again when it has finished.\n");
+        g_running = 0;
+        return;
+    }
+#endif /* _WIN32 */
+    if (strcmp(ready, "restart") != 0) {
+        respond_error(req, 409, "there's no installed update waiting for a restart");
+        return;
+    }
+    respond_ok(req);
+    g_restart = 1;
+    g_running = 0;
+}
+
+/*
+ * Start the new mm_gui in our place, with the same options, on the same port
+ * (the page reloads from it), without opening another browser window.
+ */
+static int restart_self(int argc, char *argv[], int html_given) {
+    char  self[PATH_LEN], port[16];
+    char *args[MAX_ARGS + 8];
+    int   n = 0;
+
+    tool_path(self, sizeof(self), "mm_gui");
+    snprintf(port, sizeof(port), "%d", g_port);
+    args[n++] = self;
+    for (int i = 1; i < argc && n < MAX_ARGS; i++) {
+        if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "-H") == 0) {
+            i++;    /* given again below, as absolute paths */
+        } else if (strcmp(argv[i], "-n") != 0) {
+            args[n++] = argv[i];
+        }
+    }
+    args[n++] = "-p";
+    args[n++] = port;
+    args[n++] = "-w";
+    args[n++] = g_root;
+    if (html_given) {
+        args[n++] = "-H";
+        args[n++] = g_html;
+    }
+    args[n++] = "-n";
+    args[n]   = NULL;
+    printf("mm_gui: restarting into the new version.\n");
+    fflush(stdout);
+#ifdef _WIN32
+    {
+        STARTUPINFOA        si;
+        PROCESS_INFORMATION pi;
+        sbuf_t              cmd = { 0 };
+
+        for (int i = 0; args[i]; i++) {
+            if (i) sb_add(&cmd, " ", 1);
+            win_quote(&cmd, args[i]);
+        }
+        memset(&si, 0, sizeof(si));
+        si.cb = sizeof(si);
+        if (!CreateProcessA(NULL, cmd.s, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+            fprintf(stderr, "mm_gui: couldn't start %s (Windows error %lu): start it again yourself.\n", self, GetLastError());
+            free(cmd.s);
+            return 1;
+        }
+        free(cmd.s);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return 0;
+    }
+#else
+    execv(self, args);
+    fprintf(stderr, "mm_gui: couldn't start %s: %s.  Start it again yourself.\n", self, strerror(errno));
+    return 1;
+#endif /* _WIN32 */
+}
+
 static void handle(request_t *req) {
     int is_get  = strcmp(req->method, "GET") == 0 || strcmp(req->method, "HEAD") == 0;
     int is_post = strcmp(req->method, "POST") == 0;
@@ -2713,6 +3577,12 @@ static void handle(request_t *req) {
         api_accounts_settings(req);
     } else if (strcmp(req->path, "/api/prefs") == 0) {
         api_prefs(req);
+    } else if (strcmp(req->path, "/api/update") == 0 && is_get) {
+        api_update_info(req);
+    } else if (strcmp(req->path, "/api/update/start") == 0 && is_post) {
+        api_update_start(req);
+    } else if (strcmp(req->path, "/api/update/restart") == 0 && is_post) {
+        api_update_restart(req);
     } else if (strcmp(req->path, "/api/info") == 0 && is_get) {
         api_info(req);
     } else if (strcmp(req->path, "/api/list") == 0 && is_get) {
@@ -2895,7 +3765,7 @@ static void on_signal(int sig) {
 
 static void usage(const char *name, FILE *stream) {
     fprintf(stream,
-            "usage: %s [-p <port>] [-w <working folder>] [-H <table_editor.html>] [-L <address>] [-n]\n"
+            "usage: %s [-p <port>] [-w <working folder>] [-H <table_editor.html>] [-L <address>] [-n] [-V]\n"
             "\t-p <port> - Local port for the control panel (default: %d, or the next free one).\n"
             "\t-L <address> - Also answer other computers on this address (0.0.0.0 for all of this computer's\n"
             "\t               addresses).  They must sign in, so an admin account must be added first.  The\n"
@@ -2903,6 +3773,7 @@ static void usage(const char *name, FILE *stream) {
             "\t-w <folder> - Working folder with tables/ and config/ (default: found automatically).\n"
             "\t-H <file> - The table_editor.html page to serve (default: found automatically).\n"
             "\t-n - Don't open a web browser.\n"
+            "\t-V - Print the version and exit.\n"
             "\t-h - This help.\n",
             name, DEFAULT_PORT);
 }
@@ -2915,7 +3786,14 @@ int main(int argc, char *argv[]) {
     osal_socket_t lsock = OSAL_INVALID_SOCKET;
     struct sockaddr_in addr;
     uint32_t      listen_addr = htonl(INADDR_LOOPBACK);
+    int           html_given = 0;
 
+    if (argc == 4 && strcmp(argv[1], "--update") == 0) {
+        /* The update center's job: see update_main(). */
+        exe_dir(g_bindir, sizeof(g_bindir), argv[0]);
+        absolute(g_bindir, sizeof(g_bindir));
+        return update_main(argv[2], argv[3]);
+    }
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
             g_port = atoi(argv[++i]);
@@ -2924,12 +3802,16 @@ int main(int argc, char *argv[]) {
             opt_root = argv[++i];
         } else if (strcmp(argv[i], "-H") == 0 && i + 1 < argc) {
             opt_html = argv[++i];
+            html_given = 1;
         } else if (strcmp(argv[i], "-L") == 0 && i + 1 < argc) {
             copy_str(g_listen, sizeof(g_listen), argv[++i]);
         } else if (strcmp(argv[i], "-n") == 0) {
             open_it = 0;
         } else if (strcmp(argv[i], "-h") == 0) {
             usage(argv[0], stdout);
+            return 0;
+        } else if (strcmp(argv[i], "-V") == 0) {
+            printf("mmumblephone control panel %s\n", CMAKE_VERSION_STR);
             return 0;
         } else {
             usage(argv[0], stderr);
@@ -3056,6 +3938,7 @@ int main(int argc, char *argv[]) {
             return -ENOMEM;
         }
     }
+    update_cleanup();
     make_token();
     find_python();
     load_accounts();
@@ -3187,6 +4070,9 @@ int main(int argc, char *argv[]) {
             break;
         }
         osal_sleep_ms(100);
+    }
+    if (g_restart) {
+        return restart_self(argc, argv, html_given);
     }
     return 0;
 }
