@@ -237,6 +237,33 @@ class AccountsTest(unittest.TestCase):
         self.assertEqual(self.login("alice", "correct horse")[0], 401)
         self.assertEqual(self.login("alice", "new password!")[0], 200)
 
+    def test_settings_are_kept_in_the_working_folder(self):
+        import json
+        # No accounts: one set of settings, kept across a restart (and so another port).
+        self.assertEqual(self.call("GET", "/api/prefs")[1]["prefs"], "")
+        self.assertEqual(self.call("PUT", "/api/prefs", '{"mmTableEditor.theme":"dark"}')[0], 200)
+        self.assertEqual(self.call("PUT", "/api/prefs?scope=manager", '{"mmTableEditor.manager":"{}"}')[0], 200)
+        self.assertEqual(self.call("PUT", "/api/prefs", "not json")[0], 400)
+        self.panel.stop()
+        self.panel = Panel(self.work)
+        self.assertEqual(json.loads(self.call("GET", "/api/prefs")[1]["prefs"]), {"mmTableEditor.theme": "dark"})
+
+        # With accounts: each has their own; mm_manager's options are for admins only.
+        admin = self.add_admin()
+        self.assertEqual(self.call("GET", "/api/prefs", session=admin)[1]["prefs"], "")
+        self.assertEqual(self.call("GET", "/api/prefs?scope=manager", session=admin)[1]["prefs"], '{"mmTableEditor.manager":"{}"}')
+        self.call("POST", "/api/accounts/save", f"name=bob\nrole=user\npassword=bobs password\nphone={MINE} overview", admin)
+        bob = self.login("bob", "bobs password")[1]["session"]
+        self.assertEqual(self.call("PUT", "/api/prefs", '{"mmTableEditor.hints":"off"}', bob)[0], 200)
+        self.assertEqual(self.call("GET", "/api/prefs", session=bob)[1]["prefs"], '{"mmTableEditor.hints":"off"}')
+        self.assertEqual(self.call("GET", "/api/prefs", session=admin)[1]["prefs"], "")
+        self.assertEqual(self.call("GET", "/api/prefs?scope=manager", session=bob)[0], 403)
+        self.assertEqual(self.call("PUT", "/api/prefs?scope=manager", "{}", bob)[0], 403)
+        self.assertEqual(self.call("GET", "/api/file?path=.mm_gui/prefs/user-bob.json", session=admin)[0], 400)
+        # An account's settings go with it.
+        self.assertEqual(self.call("POST", "/api/accounts/delete?name=bob", session=admin)[0], 200)
+        self.assertFalse(os.path.exists(os.path.join(self.work, ".mm_gui", "prefs", "user-bob.json")))
+
 
 if __name__ == "__main__":
     unittest.main()
