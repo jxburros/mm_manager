@@ -1,5 +1,9 @@
 # Changelog
 
+### 0.5.4: releases build on GCC 15
+
+- The release build failed on GitHub's current Linux runners: GCC 15 with glibc 2.43 warns about the bundled `third-party/sqlite3.c`, and warnings are errors. Warnings in that vendored file no longer stop the build; mmumblephone's own code still must build cleanly. 0.5.3 was never published, so 0.5.4 is the first release with its changes.
+
 ### 0.5.3: control panel settings stay put
 
 - The control panel's settings (mm_manager's options, the page you were on, theme, hints) now also live in the working folder, in `.mm_gui/prefs/`, and the page reads them back when it opens. Before, only the browser kept them, and a browser keeps them per address. They were lost whenever mm_gui moved to the next free port, the page was opened as `localhost` instead of `127.0.0.1`, or another browser was used. mm_manager's options are shared by the admins; everything else is each account's own, and is removed with the account.

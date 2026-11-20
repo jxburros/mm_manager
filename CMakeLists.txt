@@ -125,6 +125,14 @@ include_directories("third-party" ".")
 
 ADD_LIBRARY(mm_util STATIC "src/mm_util.c")
 ADD_LIBRARY(sqlite3 STATIC "third-party/sqlite3.c" "third-party/sqlite3.h")
+# SQLite is vendored as-is: newer compilers and C libraries (GCC 15 with glibc 2.43,
+# for example) warn about it, and those warnings aren't ours to fix, so they don't
+# stop the build.  Our own code still treats warnings as errors.
+if(MSVC)
+    target_compile_options(sqlite3 PRIVATE /WX-)
+else()
+    target_compile_options(sqlite3 PRIVATE -w)
+endif()
 
 if(MSVC)
 ADD_LIBRARY(mm_serial STATIC "src/mm_serial_win32.c" "src/mm_serial.h" "third-party/getopt.c" "third-party/getopt.h")
