@@ -281,6 +281,10 @@ add_test(NAME payphones COMMAND Python3::Interpreter -m unittest tests/test_payp
 add_test(NAME gui_accounts COMMAND Python3::Interpreter -m unittest tests/test_gui_accounts.py
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(gui_accounts PROPERTIES ENVIRONMENT "MM_GUI=$<TARGET_FILE:mm_gui>" TIMEOUT 120)
+# The update center: only newer versions, only packages that match their checksums.
+add_test(NAME gui_update COMMAND Python3::Interpreter -m unittest tests/test_gui_update.py
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(gui_update PROPERTIES ENVIRONMENT "MM_GUI=$<TARGET_FILE:mm_gui>" TIMEOUT 120)
 endif()
 
 # Install

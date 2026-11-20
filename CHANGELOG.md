@@ -1,7 +1,10 @@
 # Changelog
 
-### 0.5.4: releases build on GCC 15
+### 0.5.4: update center, releases build on GCC 15
 
+- An update center in the control panel, under manager → updates. It lists the releases on GitHub that are newer than the installed version, and installs the one you pick: any newer version, never an older one or the same one (mm_gui checks this itself, not only the page). The package is checked against the release's `SHA256SUMS.txt` and the new mm_gui is test-run before anything is replaced; a failed install puts back what it changed. Installed tables and config you may have edited are kept. Then mm_gui restarts as the new version on the same port. Windows installs from the installer get the new installer instead. Previews are listed only on request. See README → Updates.
+- `mm_gui -V` prints the version.
+- Tests: `tests/test_gui_update.py` (no downgrades, a damaged package is refused, an install keeps the user's config).
 - The release build failed on GitHub's current Linux runners: GCC 15 with glibc 2.43 warns about the bundled `third-party/sqlite3.c`, and warnings are errors. Warnings in that vendored file no longer stop the build; mmumblephone's own code still must build cleanly. 0.5.3 was never published, so 0.5.4 is the first release with its changes.
 
 ### 0.5.3: control panel settings stay put
